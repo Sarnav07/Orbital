@@ -10,9 +10,11 @@ Early implementation. No deployed hook, usable swap interface or simulator is av
 
 Implemented: token-unit normalization with explicit input/output rounding, overflow rejection, unit tests and fuzz tests. Decimal normalization does not assume that a token maintains its peg.
 
+An independent Python geometry reference covers the sphere, tick reserve bounds, virtual reserves and peg concentration. Read the [protocol specification](docs/SPECIFICATION.md) and [reference guide](reference/README.md) for the supported mathematics and remaining obligations.
+
 ## Development
 
-Install Foundry **v1.7.1**, Git and Make. Solidity **0.8.30** is selected in `contracts/foundry.toml`; Foundry downloads that compiler when needed. The target EVM is Cancun.
+Install Foundry **v1.7.1**, Python **3.14.6**, Git and Make. The reference uses only Python's standard library. Solidity **0.8.30** is selected in `contracts/foundry.toml`; Foundry downloads that compiler when needed. The target EVM is Cancun.
 
 From the repository root, run:
 
