@@ -8,6 +8,8 @@ An experimental Uniswap v4 hook applying Paradigm's Orbital geometry to a shared
 
 Early implementation. No deployed hook, usable swap interface or simulator is available yet. This repository is not audited and must not be used with real funds.
 
+Implemented: token-unit normalization with explicit input/output rounding, overflow rejection, unit tests and fuzz tests. Decimal normalization does not assume that a token maintains its peg.
+
 ## Development
 
 Install Foundry **v1.7.1**, Git and Make. Solidity **0.8.30** is selected in `contracts/foundry.toml`; Foundry downloads that compiler when needed. The target EVM is Cancun.
