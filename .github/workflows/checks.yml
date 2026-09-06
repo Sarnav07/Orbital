@@ -1,0 +1,20 @@
+name: Checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - run: forge fmt --check
+        working-directory: contracts
+      - run: forge build --sizes
+        working-directory: contracts
+      - run: forge test -vv
+        working-directory: contracts
+        env:
+          FOUNDRY_PROFILE: ci
