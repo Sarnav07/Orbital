@@ -121,6 +121,35 @@ contract OrbitalV4HookTest {
         }
     }
 
+    function testStatefulAllPairsAndCrossingSequenceMatchesEngine() public {
+        Torus4.State memory modelState = Torus4.State({rInterior: 200 * WAD, kBoundary: 0, sBoundary: 0});
+        SegmentedTorus4.Tick[] memory modelTicks = _ticks();
+        uint256[4] memory modelReserves = [uint256(100 * WAD), 100 * WAD, 100 * WAD, 100 * WAD];
+        uint8[14] memory inputs = [uint8(0), 1, 0, 1, 0, 2, 0, 3, 1, 2, 1, 3, 2, 3];
+        uint8[14] memory outputs = [uint8(1), 0, 1, 0, 2, 0, 3, 0, 2, 1, 3, 1, 3, 2];
+        uint256[14] memory amounts =
+            [uint256(100 * WAD), 10 * WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD];
+
+        for (uint256 action; action < inputs.length; ++action) {
+            SegmentedTorus4.Result memory expected = SegmentedTorus4.swapExactIn(
+                modelState, modelTicks, modelReserves, inputs[action], outputs[action], amounts[action]
+            );
+            (uint256 amountIn, uint256 actualOut) = _executeIndexed(inputs[action], outputs[action], amounts[action]);
+            uint256[4] memory actualReserves = hook.reserves();
+            assert(amountIn == amounts[action]);
+            assert(actualOut == expected.amountOut);
+            assert(hook.state().rInterior == expected.state.rInterior);
+            assert(hook.state().kBoundary == expected.state.kBoundary);
+            assert(hook.state().sBoundary == expected.state.sBoundary);
+            for (uint256 asset; asset < 4; ++asset) {
+                assert(actualReserves[asset] == expected.reserves[asset]);
+            }
+            modelState = expected.state;
+            modelReserves = expected.reserves;
+            _applyBitmap(modelTicks, expected.interiorBitmap);
+        }
+    }
+
     function testRejectsNonCanonicalOrUnknownPair() public {
         PoolKey memory reversed = _key(USDC, USDT);
         reversed.currency0 = USDT;
@@ -194,6 +223,26 @@ contract OrbitalV4HookTest {
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook))
         });
+    }
+
+    function _executeIndexed(uint8 input, uint8 output, uint256 amountIn) private returns (uint256, uint256) {
+        Currency[4] memory currencies = [USDC, USDT, DAI, FRAX];
+        bool zeroForOne = input < output;
+        Currency currency0 = zeroForOne ? currencies[input] : currencies[output];
+        Currency currency1 = zeroForOne ? currencies[output] : currencies[input];
+        return fixture.executeExactIn(hook, _key(currency0, currency1), _exactIn(zeroForOne, amountIn));
+    }
+
+    function _ticks() private pure returns (SegmentedTorus4.Tick[] memory ticks) {
+        ticks = new SegmentedTorus4.Tick[](2);
+        ticks[0] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 110 * WAD, isInterior: true});
+        ticks[1] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 130 * WAD, isInterior: true});
+    }
+
+    function _applyBitmap(SegmentedTorus4.Tick[] memory ticks, uint256 bitmap) private pure {
+        for (uint256 i; i < ticks.length; ++i) {
+            ticks[i].isInterior = bitmap & (uint256(1) << i) != 0;
+        }
     }
 
     function _exactIn(bool zeroForOne, uint256 amountIn) private pure returns (SwapParams memory) {
