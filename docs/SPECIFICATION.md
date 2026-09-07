@@ -130,6 +130,12 @@ This derivation is defined in both interior and boundary states. It does not imp
 
 `RangeShareBook4` stores claims by `(rangeId, owner)`. Bootstrap assigns a specified initial share supply to the attributed inventory of one range. Subsequent deposits must reproduce that range's current four-asset inventory ratio exactly; the matching shares are minted to the depositor. A burn returns the proportional real inventory of that same range, with a full burn returning every remaining unit. No operation reads a global pool pro-rata balance or another range's inventory. The current book is an accounting component: ERC-20 custody, hook callback authorization, post-swap share-state synchronization, and fee liabilities remain later integration work.
 
+### Fee growth and dust policy
+
+`RangeFeeBook4` records fee growth per range and per asset in WAD units per LP share. A settled swap segment supplies its participating range IDs and nonzero weights; the segment's fee amount is split by those weights, then each range's allocation is converted to per-share growth. LP balances checkpoint before every mint or burn, so newly minted shares cannot claim prior growth and burned shares retain already-accrued claims. Collection returns the caller's checkpointed claim for that range only.
+
+Two rounding stages are explicit: a segment's integer split remainder, and the remainder when a range allocation becomes per-share growth. Both are accumulated as non-redeemable, per-asset dust rather than assigned by an arbitrary last-recipient rule. This commit defines accounting math only: C11 must connect fee inputs to actual v4 settlement and C10 does not introduce a fee rate, pause authority, or ERC-20 transfers.
+
 LP shares refer to one normalized range, not a global pro-rata claim over differently exposed ranges. Proportional entry/exit refers to that range's current attributed basket, not automatically equal dollar deposits. Fee collection cannot withdraw principal. Deposits cannot claim pre-existing fees. The fixed fee's value and allocation among participating ticks must be specified before fee code; boundary status alone does not imply zero participation.
 
 Range identity uses lambda, not radius or absolute k. The reference reports an exact rational k/r for supplied finite decimals. Approximate equality must not merge ranges. The future on-chain range grid/encoding needs its own derivation; reference Decimal rounding is not the grid.
@@ -141,8 +147,8 @@ Reject invalid dimensions, nonfinite/negative quantities, unsupported decimals, 
 The following are deliberately unresolved, and block the corresponding implementation claims:
 
 - All-boundary continuation, production branch-selection bounds and fixed-point torus solving.
-- ERC-20 custody, hook-authorized share mutations, post-swap inventory synchronization and fee liabilities/dust reconciliation.
-- Fee rate, segment allocation, fee/dust reconciliation and any pause authority/withdrawal policy.
+- ERC-20 custody, hook-authorized share mutations, post-swap inventory synchronization and reconciliation of on-chain balances with recorded claims/dust.
+- Fee-rate governance, pause authority and actual v4 fee settlement.
 - Fixed-point geometry format, supported radius/range grid, numeric tolerances and gas/iteration limits.
 - Production v4 settlement, deterministic hook-address mining, pool initialization and deployment-specific integration tests.
 
