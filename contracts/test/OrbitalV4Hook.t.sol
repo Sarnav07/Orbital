@@ -11,6 +11,7 @@ import {SwapParams} from "v4-core/types/PoolOperation.sol";
 import {OrbitalV4Hook} from "../src/OrbitalV4Hook.sol";
 import {SegmentedTorus4} from "../src/math/SegmentedTorus4.sol";
 import {RangeLiquidity4} from "../src/math/RangeLiquidity4.sol";
+import {HookAddressMiner} from "../src/deploy/HookAddressMiner.sol";
 import {Torus4} from "../src/math/Torus4.sol";
 
 /// @notice Minimal manager-side accounting fixture for the v4 custom-delta leg.
@@ -175,7 +176,14 @@ contract OrbitalV4HookTest {
         SegmentedTorus4.Tick[] memory ticks = new SegmentedTorus4.Tick[](2);
         ticks[0] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 110 * WAD, isInterior: true});
         ticks[1] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 130 * WAD, isInterior: true});
-        deployed = new OrbitalV4Hook(IPoolManager(address(fixture)), currencies, reserves, ticks, FEE, TICK_SPACING);
+        bytes memory initCode = abi.encodePacked(
+            type(OrbitalV4Hook).creationCode,
+            abi.encode(IPoolManager(address(fixture)), currencies, reserves, ticks, FEE, TICK_SPACING)
+        );
+        bytes32 salt = HookAddressMiner.find(address(this), keccak256(initCode), 136, 100_000);
+        deployed = new OrbitalV4Hook{salt: salt}(
+            IPoolManager(address(fixture)), currencies, reserves, ticks, FEE, TICK_SPACING
+        );
     }
 
     function _key(Currency currency0, Currency currency1) private view returns (PoolKey memory) {

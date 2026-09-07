@@ -63,6 +63,7 @@ contract OrbitalV4Hook is IHooks {
         poolManager = poolManager_;
         poolFee = poolFee_;
         poolTickSpacing = poolTickSpacing_;
+        Hooks.validateHookPermissions(IHooks(address(this)), hookPermissions());
         _currencies = currencies_;
         _reserves = reserves_;
         _state = _aggregate(ticks_);

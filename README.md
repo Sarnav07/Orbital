@@ -29,6 +29,8 @@ cd contracts
 FOUNDRY_PROFILE=ci forge test -vv
 ```
 
+The hook uses Uniswap v4 address flags. [`DeployOrbitalHook.s.sol`](contracts/script/DeployOrbitalHook.s.sol) mines its CREATE2 salt from the exact constructor calldata before broadcasting; required addresses and the private key are read only from environment variables. Running it is a separate authorized deployment action.
+
 The checks compile contracts, check formatting, report bytecode sizes and run tests. CI uses the same commands with an increased fuzz run count.
 
 ## Prior art
