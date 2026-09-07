@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Four-asset, no-fee trade that crosses the narrower of two ranges.",
+  "n": 4,
+  "precision": 80,
+  "ranges": [["100", "1.10"], ["100", "1.30"]],
+  "trade": {"input_index": 0, "output_index": 1, "amount_in": "100"},
+  "expected": {
+    "segments": 2,
+    "first_crossing": "1.10",
+    "first_input": "80",
+    "first_output": "40",
+    "total_output": "40.123552802932248591415218327110577980693843614254264451439007408989617163658546",
+    "interior": [false, true]
+  }
+}

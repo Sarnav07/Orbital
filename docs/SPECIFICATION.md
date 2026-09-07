@@ -61,6 +61,22 @@ The reference evaluates equivalent factorizations to reduce cancellation: `s^2 =
 
 The zero-width endpoint `k_min` is supported analytically: s = 0, x_min = x_max = q, real deposit = 0. Efficiency is undefined (reported as `None`), not an investable infinite-return position. Creating such an LP range must be rejected. At `k_max`, x_min = 0 and efficiency = 1. Increasing r and k by the same factor scales quantities but preserves lambda and concentration.
 
+### Four-asset fixed-point prototype
+
+The first Solidity geometry implementation fixes `n = 4`, so `sqrt(n) = 2` exactly in WAD. Its input radius is positive, even in WAD units, and at most `1e29`; these are arithmetic-domain limits, not liquidity limits. It calculates `q = r/2`, `k_min = r`, `k_max = 3r/2`, `s² = (k-r)(3r-k)`, and uses a floored WAD square root. The `sqrt(3)` coefficient is a floored WAD constant. Every value is therefore directionally rounded down and is expected to differ from the Decimal reference by a bounded amount. The next chunk must derive those bounds and compare implementation vectors before this geometry quotes trades.
+
+## Aggregate invariant and segmented reference trades
+
+For a fixed interior/boundary partition, let `r_int` be the sum of interior radii, `k_bound` the sum of boundary `k` values, and `s_bound` the sum of boundary radii. For total reserves `x_total`, set `alpha_total = sum(x_total)/sqrt(n)` and `w_norm = sqrt(sum((x_i - mean(x))²))`. The aggregate invariant is:
+
+```text
+(alpha_total - k_bound - r_int*sqrt(n))² + (w_norm - s_bound)² = r_int²
+```
+
+All interior ticks share a normalized reserve direction. They remain interior exactly while `alpha_int/r_int < k/r`; a rising normalized projection traps the smallest crossed interior boundary, while a falling projection recovers the largest crossed boundary tick. A trade must solve the fixed-partition invariant, then segment at the first boundary if that assumption is violated. At a crossover to normalized boundary `lambda`, the total reserve sum is fixed at `(r_int*lambda + k_bound)*sqrt(n)`, so `input - output` is fixed. This reduces the crossover to one physical root, which the reference brackets independently.
+
+The current reference applies no fees and uses Decimal bracketing rather than a Solidity solver. It supports an interior sphere plus one or more boundary ranges and validates the aggregate residual after every segment. It explicitly rejects all-boundary continuation, LP accounting, and any claim about settlement. Those are later implementation obligations.
+
 For a single-depeg scenario with one price p relative to the other equal prices:
 
 ```text
@@ -90,7 +106,7 @@ Reject invalid dimensions, nonfinite/negative quantities, unsupported decimals, 
 
 The following are deliberately unresolved, and block the corresponding implementation claims:
 
-- Torus consolidation, branch selection, crossing/recovery and all-boundary trading.
+- All-boundary continuation, production branch-selection bounds, LP reserve attribution and fixed-point torus solving.
 - Per-tick reserve attribution during trades and LP entry/exit at boundaries. No automatic pool-wide withdrawal lock is adopted.
 - Fee rate, segment allocation, fee/dust reconciliation and any pause authority/withdrawal policy.
 - Fixed-point geometry format, supported radius/range grid, numeric tolerances and gas/iteration limits.
