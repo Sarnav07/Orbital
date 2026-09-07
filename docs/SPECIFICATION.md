@@ -112,6 +112,16 @@ The logical basket state must distinguish:
 
 Virtual offsets are never redeemable. At settled operation boundaries, accounted custody must cover real inventory plus separately accrued fees and assigned dust, without counting the same balance twice. Pending v4 deltas must settle before an operation completes. Swaps through any pair change the same basket state. A failure reverts the entire operation.
 
+### Current v4 adapter boundary
+
+`OrbitalV4Hook` is the first protocol adapter over the bounded four-asset engine. Its constructor receives a manager address, a strictly address-sorted immutable four-currency registry, a matched initial reserve vector, and the bounded tick set. It accepts a `PoolKey` only when it has two distinct registered currencies in canonical address order, the hook address, and the configured fee and tick spacing. It supports exact-input swaps only.
+
+For an accepted route, `beforeSwap` identifies the pair's two indices in the one shared reserve vector, runs `SegmentedTorus4`, persists the resulting aggregate state and tick statuses, then returns a v4 `BeforeSwapDelta`: positive specified input and negative unspecified output. This is the v4 convention that replaces the concentrated-liquidity leg with the hook's custom curve result. The adapter implements every `IHooks` selector, but all callbacks other than `beforeSwap` explicitly revert.
+
+The repository also includes a minimal manager-side accounting fixture. It invokes the hook as its configured manager, decodes v4's `BeforeSwapDelta`, and records the input receipt and output payment by currency. It proves that two different canonical pair routes change the same four-asset book and that their custom-delta legs can be accounted for independently. The fixture does not imitate PoolManager internals, transfer ERC-20 balances, initialize pools, or prove production settlement.
+
+The required deployment permission pattern is `beforeSwap` plus `beforeSwapReturnDelta`. This implementation exposes that pattern for the later deterministic address-mining/deployment step, but deliberately does not validate the constructor address yet. Until that step and a real PoolManager settlement flow are implemented, no statement of testnet readiness is warranted.
+
 LP shares refer to one normalized range, not a global pro-rata claim over differently exposed ranges. Proportional entry/exit refers to that range's current attributed basket, not automatically equal dollar deposits. Fee collection cannot withdraw principal. Deposits cannot claim pre-existing fees. The fixed fee's value and allocation among participating ticks must be specified before fee code; boundary status alone does not imply zero participation.
 
 Range identity uses lambda, not radius or absolute k. The reference reports an exact rational k/r for supplied finite decimals. Approximate equality must not merge ranges. The future on-chain range grid/encoding needs its own derivation; reference Decimal rounding is not the grid.
@@ -126,6 +136,6 @@ The following are deliberately unresolved, and block the corresponding implement
 - Per-tick reserve attribution during trades and LP entry/exit at boundaries. No automatic pool-wide withdrawal lock is adopted.
 - Fee rate, segment allocation, fee/dust reconciliation and any pause authority/withdrawal policy.
 - Fixed-point geometry format, supported radius/range grid, numeric tolerances and gas/iteration limits.
-- Deployment-specific v4 dependency revisions and settlement adapter details.
+- Production v4 settlement, deterministic hook-address mining, pool initialization and deployment-specific integration tests.
 
 The sphere reference is not a swap engine, LP accountant or proof of depeg protection. Those components must satisfy the conservation requirements separately.
