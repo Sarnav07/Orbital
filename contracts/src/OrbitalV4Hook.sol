@@ -13,6 +13,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {Sphere4} from "./math/Sphere4.sol";
 import {Torus4} from "./math/Torus4.sol";
 import {SegmentedTorus4} from "./math/SegmentedTorus4.sol";
+import {RangeLiquidity4} from "./math/RangeLiquidity4.sol";
 
 /// @notice v4 adapter for a single four-stablecoin Orbital reserve book.
 /// @dev The hook consumes exact-input swaps only. `beforeSwap` replaces the
@@ -135,6 +136,13 @@ contract OrbitalV4Hook is IHooks {
 
     function tickIsInterior(uint256 index) external view returns (bool) {
         return _ticks[index].isInterior;
+    }
+
+    /// @notice Current per-range coordinates, virtual offsets and redeemable inventory.
+    /// @dev Attribution is derived from the same stored reserve book used for swaps.
+    ///      LP share custody and token settlement are layered on in later milestones.
+    function rangeAttributions() external view returns (RangeLiquidity4.Attribution[] memory) {
+        return RangeLiquidity4.attribute(_state, _ticksInMemory(), _reserves);
     }
 
     function beforeInitialize(address, PoolKey calldata, uint160)

@@ -122,6 +122,14 @@ The repository also includes a minimal manager-side accounting fixture. It invok
 
 The required deployment permission pattern is `beforeSwap` plus `beforeSwapReturnDelta`. This implementation exposes that pattern for the later deterministic address-mining/deployment step, but deliberately does not validate the constructor address yet. Until that step and a real PoolManager settlement flow are implemented, no statement of testnet readiness is warranted.
 
+### Range attribution and LP claims
+
+`RangeLiquidity4` derives each tick's coordinate from the current aggregate reserve vector and its recorded interior/boundary status. Interior ranges receive the shared centered direction in proportion to radius; boundary ranges receive it in proportion to their boundary-sphere radius. Each range's virtual offset is the tick's `x_min`, and its redeemable inventory is `coordinate - virtualOffset` per asset. Virtual offsets are not an LP claim.
+
+This derivation is defined in both interior and boundary states. It does not impose a pool-wide withdrawal freeze when one range is trapped. Fixed-point directional allocation can differ from the aggregate coordinate by a bounded number of WAD-wei; it is explicitly non-redeemable attribution dust and is carried forward for C10 reconciliation rather than assigned to an LP by rounding.
+
+`RangeShareBook4` stores claims by `(rangeId, owner)`. Bootstrap assigns a specified initial share supply to the attributed inventory of one range. Subsequent deposits must reproduce that range's current four-asset inventory ratio exactly; the matching shares are minted to the depositor. A burn returns the proportional real inventory of that same range, with a full burn returning every remaining unit. No operation reads a global pool pro-rata balance or another range's inventory. The current book is an accounting component: ERC-20 custody, hook callback authorization, post-swap share-state synchronization, and fee liabilities remain later integration work.
+
 LP shares refer to one normalized range, not a global pro-rata claim over differently exposed ranges. Proportional entry/exit refers to that range's current attributed basket, not automatically equal dollar deposits. Fee collection cannot withdraw principal. Deposits cannot claim pre-existing fees. The fixed fee's value and allocation among participating ticks must be specified before fee code; boundary status alone does not imply zero participation.
 
 Range identity uses lambda, not radius or absolute k. The reference reports an exact rational k/r for supplied finite decimals. Approximate equality must not merge ranges. The future on-chain range grid/encoding needs its own derivation; reference Decimal rounding is not the grid.
@@ -132,8 +140,8 @@ Reject invalid dimensions, nonfinite/negative quantities, unsupported decimals, 
 
 The following are deliberately unresolved, and block the corresponding implementation claims:
 
-- All-boundary continuation, production branch-selection bounds, LP reserve attribution and fixed-point torus solving.
-- Per-tick reserve attribution during trades and LP entry/exit at boundaries. No automatic pool-wide withdrawal lock is adopted.
+- All-boundary continuation, production branch-selection bounds and fixed-point torus solving.
+- ERC-20 custody, hook-authorized share mutations, post-swap inventory synchronization and fee liabilities/dust reconciliation.
 - Fee rate, segment allocation, fee/dust reconciliation and any pause authority/withdrawal policy.
 - Fixed-point geometry format, supported radius/range grid, numeric tolerances and gas/iteration limits.
 - Production v4 settlement, deterministic hook-address mining, pool initialization and deployment-specific integration tests.

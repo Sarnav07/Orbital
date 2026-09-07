@@ -10,6 +10,7 @@ import {SwapParams} from "v4-core/types/PoolOperation.sol";
 
 import {OrbitalV4Hook} from "../src/OrbitalV4Hook.sol";
 import {SegmentedTorus4} from "../src/math/SegmentedTorus4.sol";
+import {RangeLiquidity4} from "../src/math/RangeLiquidity4.sol";
 import {Torus4} from "../src/math/Torus4.sol";
 
 /// @notice Minimal manager-side accounting fixture for the v4 custom-delta leg.
@@ -105,6 +106,18 @@ contract OrbitalV4HookTest {
         assert(hook.hookPermissions().beforeSwapReturnDelta);
         assert(!hook.hookPermissions().afterSwap);
         assert(!hook.hookPermissions().afterSwapReturnDelta);
+    }
+
+    function testAttributionReflectsTheSharedBookAfterABoundaryCrossing() public {
+        fixture.executeExactIn(hook, _key(USDC, USDT), _exactIn(true, 100 * WAD));
+        RangeLiquidity4.Attribution[] memory ranges = hook.rangeAttributions();
+
+        assert(ranges.length == 2);
+        assert(!ranges[0].isInterior && ranges[1].isInterior);
+        for (uint256 asset; asset < 4; ++asset) {
+            assert(ranges[0].coordinates[asset] >= ranges[0].virtualOffset);
+            assert(ranges[1].coordinates[asset] >= ranges[1].virtualOffset);
+        }
     }
 
     function testRejectsNonCanonicalOrUnknownPair() public {
