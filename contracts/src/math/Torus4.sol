@@ -61,6 +61,7 @@ library Torus4 {
         int256 value = residual(state, reserves);
         uint256 absoluteResidual = _abs(value);
         uint256 rhs = state.rInterior.mulWadDown(state.rInterior);
+        if (rhs == 0) return absoluteResidual == 0;
         return absoluteResidual.divWadDown(rhs) <= MAX_RELATIVE_DRIFT_WAD;
     }
 

@@ -85,6 +85,14 @@ The solver rejects zero input, identical/out-of-range assets, output reserves be
 
 Fixed-partition quotes do not discover a tick crossing and must not be settled as if their partition remained valid after one. The next chunk must locate the first crossing, solve only to that boundary, update the aggregate state, and continue with the remaining input. Fees and real-inventory constraints are also outside this quote library.
 
+### Tick crossing and recovery
+
+`SegmentedTorus4` receives an explicit, bounded range list (`radius`, `k`, status) plus a matching aggregate state. It recomputes the aggregate before trading and rejects a mismatch. For a candidate fixed-partition quote, it calculates `alpha_int/r_int`: on a rising value it selects the smallest crossed interior `k/r`; on a falling value it selects the largest crossed boundary `k/r`. Ranges with exactly the same normalized boundary flip together.
+
+At the boundary, the target total reserve sum is `2 * (r_int * (k/r) + k_bound)` for the four-asset prototype. Thus `input - output` is fixed; the engine brackets and bisects the one remaining physical root, applies that partial trade, rebuilds `rInterior/kBoundary/sBoundary`, and continues. It caps the input range list at 16 and a swap at 8 status transitions. The returned status bitmap and crossing count are computed from the actual transition sequence, not inferred from final balances.
+
+An all-boundary continuation is currently unsupported and reverts the whole transaction. This is deliberate: it does not produce a partial settlement or silently discard a rounding remainder. Exact boundary landing and an all-boundary AMM mode require a separately specified fixed-point policy before being enabled.
+
 For a single-depeg scenario with one price p relative to the other equal prices:
 
 ```text
