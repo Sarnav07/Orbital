@@ -12,3 +12,4 @@ __pycache__/
 contracts/out/
 contracts/cache/
 contracts/broadcast/
+cache/

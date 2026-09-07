@@ -77,6 +77,14 @@ All interior ticks share a normalized reserve direction. They remain interior ex
 
 The current reference applies no fees and uses Decimal bracketing rather than a Solidity solver. It supports an interior sphere plus one or more boundary ranges and validates the aggregate residual after every segment. It explicitly rejects all-boundary continuation, LP accounting, and any claim about settlement. Those are later implementation obligations.
 
+### Fixed-partition Solidity quote solver
+
+`Torus4` implements the aggregate invariant for exactly four assets with a caller-supplied fixed partition: `rInterior`, `kBoundary`, and `sBoundary`. It recomputes `alpha_total` and `||w||` from a four-asset WAD reserve vector, then quotes an exact-input swap by scanning 48 output intervals and bisecting the first sign-changing residual bracket for at most 96 iterations. It returns no state mutation.
+
+The solver rejects zero input, identical/out-of-range assets, output reserves below two raw WAD units, invalid initial aggregate state, unsupported all-boundary continuation, reserve-domain overflow, no physical root, and a candidate whose relative aggregate residual exceeds `1e-9`. That numerical acceptance bound is temporary solver-domain policy, not a claim about economic error, slippage, LP solvency or a final protocol tolerance. It is measured against `rInterior²` and will be re-evaluated alongside fixed-point differential vectors.
+
+Fixed-partition quotes do not discover a tick crossing and must not be settled as if their partition remained valid after one. The next chunk must locate the first crossing, solve only to that boundary, update the aggregate state, and continue with the remaining input. Fees and real-inventory constraints are also outside this quote library.
+
 For a single-depeg scenario with one price p relative to the other equal prices:
 
 ```text

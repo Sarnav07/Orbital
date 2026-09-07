@@ -10,7 +10,7 @@ Early implementation. No deployed hook, usable swap interface or simulator is av
 
 Implemented: token-unit normalization with explicit input/output rounding, overflow rejection, unit tests and fuzz tests. Decimal normalization does not assume that a token maintains its peg.
 
-An independent Python reference covers sphere/tick geometry and no-fee segmented trades across the aggregate invariant. Solidity currently covers bounded four-asset geometry only. Read the [protocol specification](docs/SPECIFICATION.md) and [reference guide](reference/README.md) for the supported mathematics and remaining obligations.
+An independent Python reference covers sphere/tick geometry and no-fee segmented trades across the aggregate invariant. Solidity currently covers bounded four-asset geometry plus fixed-partition, no-fee quotes; tick crossing and settlement remain unimplemented. Read the [protocol specification](docs/SPECIFICATION.md) and [reference guide](reference/README.md) for the supported mathematics and remaining obligations.
 
 ## Development
 
