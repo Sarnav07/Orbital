@@ -150,6 +150,21 @@ contract OrbitalV4HookTest {
         }
     }
 
+    function testGasBudgetForOrdinaryAndCrossingRoutes() public {
+        uint256 ordinaryStart = gasleft();
+        fixture.executeExactIn(hook, _key(USDC, USDT), _exactIn(true, 10 * WAD));
+        uint256 ordinaryUsed = ordinaryStart - gasleft();
+        assert(ordinaryUsed <= 1_500_000);
+
+        // A fresh hook keeps this route on the known first-boundary path.
+        V4SettlementFixture crossingFixture = new V4SettlementFixture();
+        OrbitalV4Hook crossingHook = _deployHookFor(crossingFixture);
+        uint256 crossingStart = gasleft();
+        crossingFixture.executeExactIn(crossingHook, _keyFor(crossingHook, USDC, USDT), _exactIn(true, 100 * WAD));
+        uint256 crossingUsed = crossingStart - gasleft();
+        assert(crossingUsed <= 3_500_000);
+    }
+
     function testRejectsNonCanonicalOrUnknownPair() public {
         PoolKey memory reversed = _key(USDC, USDT);
         reversed.currency0 = USDT;
@@ -200,6 +215,10 @@ contract OrbitalV4HookTest {
     }
 
     function _deployHook() private returns (OrbitalV4Hook deployed) {
+        return _deployHookFor(fixture);
+    }
+
+    function _deployHookFor(V4SettlementFixture managerFixture) private returns (OrbitalV4Hook deployed) {
         Currency[4] memory currencies = [USDC, USDT, DAI, FRAX];
         uint256[4] memory reserves = [uint256(100 * WAD), 100 * WAD, 100 * WAD, 100 * WAD];
         SegmentedTorus4.Tick[] memory ticks = new SegmentedTorus4.Tick[](2);
@@ -207,21 +226,29 @@ contract OrbitalV4HookTest {
         ticks[1] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 130 * WAD, isInterior: true});
         bytes memory initCode = abi.encodePacked(
             type(OrbitalV4Hook).creationCode,
-            abi.encode(IPoolManager(address(fixture)), currencies, reserves, ticks, FEE, TICK_SPACING)
+            abi.encode(IPoolManager(address(managerFixture)), currencies, reserves, ticks, FEE, TICK_SPACING)
         );
         bytes32 salt = HookAddressMiner.find(address(this), keccak256(initCode), 136, 100_000);
         deployed = new OrbitalV4Hook{salt: salt}(
-            IPoolManager(address(fixture)), currencies, reserves, ticks, FEE, TICK_SPACING
+            IPoolManager(address(managerFixture)), currencies, reserves, ticks, FEE, TICK_SPACING
         );
     }
 
     function _key(Currency currency0, Currency currency1) private view returns (PoolKey memory) {
+        return _keyFor(hook, currency0, currency1);
+    }
+
+    function _keyFor(OrbitalV4Hook target, Currency currency0, Currency currency1)
+        private
+        pure
+        returns (PoolKey memory)
+    {
         return PoolKey({
             currency0: currency0,
             currency1: currency1,
             fee: FEE,
             tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(hook))
+            hooks: IHooks(address(target))
         });
     }
 
