@@ -33,6 +33,8 @@ The hook uses Uniswap v4 address flags. [`DeployOrbitalHook.s.sol`](contracts/sc
 
 The checks compile contracts, check formatting, report bytecode sizes and run tests. CI uses the same commands with an increased fuzz run count.
 
+The dependency-free BigInt transition replayer is in [`packages/simulator`](packages/simulator). Run `npm test` in that directory to verify the versioned WAD crossing trace without floating-point arithmetic.
+
 ## Prior art
 
 - [Paradigm: Orbital](https://www.paradigm.xyz/writing/orbital): mathematical design.

@@ -1,8 +1,8 @@
-.PHONY: check contracts-check reference-check
+.PHONY: check contracts-check reference-check simulator-check
 
 PYTHON ?= python3
 
-check: contracts-check reference-check
+check: contracts-check reference-check simulator-check
 
 contracts-check:
 	cd contracts && forge fmt --check
@@ -11,3 +11,6 @@ contracts-check:
 
 reference-check:
 	$(PYTHON) -m unittest discover -s reference/tests -v
+
+simulator-check:
+	cd packages/simulator && npm test
