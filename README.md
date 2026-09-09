@@ -35,6 +35,8 @@ The checks compile contracts, check formatting, report bytecode sizes and run te
 
 The dependency-free BigInt transition replayer is in [`packages/simulator`](packages/simulator). Run `npm test` in that directory to verify the versioned WAD crossing trace without floating-point arithmetic.
 
+The browser-only [testnet console](app) connects an EIP-1193 wallet and can read the shared reserve book, wallet balances and configured range-share positions. Its committed manifest intentionally contains no deployment addresses; unavailable reads are presented as unavailable rather than zero.
+
 ## Prior art
 
 - [Paradigm: Orbital](https://www.paradigm.xyz/writing/orbital): mathematical design.
