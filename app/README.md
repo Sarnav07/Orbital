@@ -8,6 +8,8 @@ When configured, the app reads `reserves()`, `tickCount()`, `tickIsInterior(uint
 
 The route and range tickets in C16 validate decimal input exactly, bind a user-selected deadline, construct exact ERC-20 approval calls, and wait for successful receipts. They do **not** fabricate an Orbital swap or LP transaction: the current Solidity milestone has no settled router or position-manager ABI. Those action buttons remain unavailable until a verified deployment supplies the solver/settlement contracts and calldata schema.
 
+C17's model inspector replays the versioned C14 WAD crossing fixture in the browser. Its triangle is an educational USDC/USDT/DAI projection that explicitly excludes FRAX; it is not a rendering of the four-asset invariant. Pair slices show shared reserve coordinates, while the range panel labels virtual floors separately from a tick's real-at-peg example. No panel claims live pool state or current redeemable LP inventory.
+
 Run the deterministic unit checks with:
 
 ```sh

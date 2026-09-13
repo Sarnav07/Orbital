@@ -134,6 +134,70 @@
         </article>
       </section>
 
+      <section class="visual-suite" aria-labelledby="visual-heading">
+        <div class="visual-heading">
+          <div>
+            <p class="eyebrow">model inspector</p>
+            <h2 id="visual-heading">See the shared book change</h2>
+          </div>
+          <p>Each panel is driven by the committed WAD replay fixture, not a live price feed.</p>
+        </div>
+
+        <div class="visual-grid">
+          <figure class="visual-panel panel" aria-labelledby="triangle-title">
+            <figcaption>
+              <p class="eyebrow">educational projection</p>
+              <h3 id="triangle-title">Three-asset slice</h3>
+              <p>USDC, USDT and DAI normalized to one triangle. FRAX is deliberately excluded; this is not the four-asset invariant.</p>
+            </figcaption>
+            <svg id="triangle-plot" class="triangle-plot" viewBox="0 0 100 100" role="img" aria-label="Educational three-asset reserve projection"></svg>
+            <div id="triangle-legend" class="visual-legend"></div>
+          </figure>
+
+          <figure class="visual-panel panel" aria-labelledby="slice-title">
+            <figcaption>
+              <p class="eyebrow">pair cross-section</p>
+              <h3 id="slice-title">Stored reserve coordinates</h3>
+              <p>One pair view over the same four-asset book. The untouched assets remain part of the state.</p>
+            </figcaption>
+            <div class="slice-selectors">
+              <select id="slice-input" aria-label="First cross-section asset"></select>
+              <span>↔</span>
+              <select id="slice-output" aria-label="Second cross-section asset"></select>
+            </div>
+            <svg id="slice-plot" class="slice-plot" viewBox="0 0 100 64" role="img" aria-label="Pair reserve-coordinate comparison"></svg>
+            <p id="slice-state" class="visual-note"></p>
+          </figure>
+        </div>
+
+        <div class="visual-grid lower-visual-grid">
+          <article class="visual-panel panel" aria-labelledby="range-geometry-title">
+            <p class="eyebrow">range geometry</p>
+            <h3 id="range-geometry-title">Virtual floor ≠ LP inventory</h3>
+            <p class="visual-copy">The virtual floor is a geometric offset. “Real at peg” is a per-range example, not the current redeemable inventory.</p>
+            <div id="range-summary" class="range-summary"></div>
+          </article>
+
+          <article class="visual-panel panel replay-panel" aria-labelledby="replay-title">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">segment replay</p>
+                <h3 id="replay-title">Cross the first boundary</h3>
+              </div>
+              <span id="replay-step" class="workflow-badge">Frame 0 / 1</span>
+            </div>
+            <p id="replay-description" class="visual-copy"></p>
+            <input id="replay-slider" class="replay-slider" type="range" min="0" max="1" value="0" step="1" aria-label="Replay frame" />
+            <div class="replay-controls">
+              <button id="replay-back" class="button button-quiet" type="button">Previous</button>
+              <button id="replay-reset" class="button button-quiet" type="button">Reset</button>
+              <button id="replay-forward" class="button button-primary" type="button">Next frame</button>
+            </div>
+            <div id="replay-reserves" class="replay-reserves" aria-live="polite"></div>
+          </article>
+        </div>
+      </section>
+
       <section class="faucet panel" aria-labelledby="faucet-heading">
         <div>
           <p class="eyebrow">test-token faucet</p>

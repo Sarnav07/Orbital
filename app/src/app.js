@@ -2,10 +2,14 @@ import { DEFAULT_MANIFEST, deploymentReady, validateManifest } from "./manifest.
 import { connectWallet, matchingNetwork, mintCalldata, sendTransaction } from "./evm.js";
 import { readPoolSnapshot, readPositions, readWalletBalances } from "./reads.js";
 import { approveExact, deadlineFrom, liquidityAvailability, parseAmount, readAllowance, swapAvailability } from "./workflows.js";
+import { formatWad, pairSlice, replayFrames, tickSummary, triangleProjection } from "./geometry.js";
+import { ASSET_SYMBOLS, SEGMENTED_WAD_V1 } from "./replay-fixture.js";
 
 const manifest = DEFAULT_MANIFEST;
 const configError = validateManifest(manifest);
 const state = { account: null, chainId: null };
+const replayFramesForFixture = replayFrames(SEGMENTED_WAD_V1);
+let replayFrameIndex = 0;
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value).replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
@@ -58,6 +62,8 @@ function renderManifestState() {
   $("liquidity-range").innerHTML = manifest.ranges.map((range) => `<option value="${range}">Range ${range}</option>`).join("");
   $("liquidity-inputs").innerHTML = manifest.assets.map((asset) => `
     <label class="liquidity-input">${asset.symbol}<input id="liquidity-${asset.symbol}" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>`).join("");
+  $("slice-input").innerHTML = ASSET_SYMBOLS.map((symbol, index) => `<option value="${index}">${symbol}</option>`).join("");
+  $("slice-output").innerHTML = ASSET_SYMBOLS.map((symbol, index) => `<option value="${index}"${index === 1 ? " selected" : ""}>${symbol}</option>`).join("");
   if (configError) {
     setNotice(`Invalid deployment manifest: ${configError}`, "error");
     return;
@@ -65,6 +71,75 @@ function renderManifestState() {
   if (!deploymentReady(manifest)) {
     setNotice("Awaiting a verified deployment manifest. Pool, balance and position values are unavailable—not zero.");
   }
+}
+
+function frame() {
+  return replayFramesForFixture[replayFrameIndex];
+}
+
+function renderTriangle(currentFrame) {
+  const projection = triangleProjection(currentFrame.reserves);
+  const labels = projection.points.map((point) => `<text class="triangle-label" x="${point.x}" y="${point.y + (point.y < 50 ? -4 : 7)}" text-anchor="middle">${point.label}</text>`).join("");
+  $("triangle-plot").innerHTML = `
+    <polygon class="triangle-frame" points="50,8 8,88 92,88" />
+    <line class="triangle-guide" x1="50" y1="61.33" x2="50" y2="8" />
+    <line class="triangle-guide" x1="50" y1="61.33" x2="8" y2="88" />
+    <line class="triangle-guide" x1="50" y1="61.33" x2="92" y2="88" />
+    <circle class="triangle-balanced" cx="50" cy="61.33" r="2.1" />
+    <circle class="triangle-point" cx="${projection.point.x.toFixed(3)}" cy="${projection.point.y.toFixed(3)}" r="3.2" />
+    ${labels}`;
+  $("triangle-legend").innerHTML = projection.shares.map((share, index) => `<span><strong>${projection.points[index].label}</strong> ${(share * 100).toFixed(1)}%</span>`).join("");
+}
+
+function renderSlice(currentFrame) {
+  let inputIndex = Number($("slice-input").value);
+  let outputIndex = Number($("slice-output").value);
+  if (inputIndex === outputIndex) {
+    outputIndex = (inputIndex + 1) % ASSET_SYMBOLS.length;
+    $("slice-output").value = String(outputIndex);
+  }
+  const slice = pairSlice(currentFrame.reserves, inputIndex, outputIndex);
+  const maximum = slice.input.raw > slice.output.raw ? slice.input.raw : slice.output.raw;
+  const inputWidth = Number(slice.input.raw * 76n / maximum);
+  const outputWidth = Number(slice.output.raw * 76n / maximum);
+  $("slice-plot").innerHTML = `
+    <text class="slice-label" x="0" y="13">${slice.input.symbol}</text><rect class="slice-track" x="20" y="7" width="76" height="11" rx="1" /><rect class="slice-bar-input" x="20" y="7" width="${inputWidth}" height="11" rx="1" /><text class="slice-value" x="100" y="14">${slice.input.display}</text>
+    <text class="slice-label" x="0" y="38">${slice.output.symbol}</text><rect class="slice-track" x="20" y="32" width="76" height="11" rx="1" /><rect class="slice-bar-output" x="20" y="32" width="${outputWidth}" height="11" rx="1" /><text class="slice-value" x="100" y="39">${slice.output.display}</text>`;
+  $("slice-state").textContent = `${slice.unchanged.join(" and ")} remain in the same shared reserve book; this panel does not isolate a pair pool.`;
+}
+
+function renderRangeSummary() {
+  $("range-summary").innerHTML = tickSummary().map((range) => `
+    <div class="range-row"><span>Range ${range.rangeId}</span>
+      <span class="range-metric">Virtual floor<strong>${range.virtualDisplay}</strong></span>
+      <span class="range-metric">Real at peg<strong>${range.realAtPegDisplay}</strong></span>
+    </div>`).join("");
+}
+
+function renderReplay(currentFrame) {
+  const action = currentFrame.action;
+  $("replay-step").textContent = `Frame ${replayFrameIndex} / ${replayFramesForFixture.length - 1}`;
+  $("replay-slider").value = String(replayFrameIndex);
+  $("replay-back").disabled = replayFrameIndex === 0;
+  $("replay-forward").disabled = replayFrameIndex === replayFramesForFixture.length - 1;
+  $("replay-description").textContent = action
+    ? `${ASSET_SYMBOLS[action.input]} +${formatWad(action.amountIn)}; ${ASSET_SYMBOLS[action.output]} −${formatWad(action.amountOut)}. Interior bitmap is 0b${currentFrame.interiorBitmap.toString(2).padStart(2, "0")}.`
+    : `Initial fixture state. Both ranges are interior: bitmap 0b${currentFrame.interiorBitmap.toString(2).padStart(2, "0")}.`;
+  $("replay-reserves").innerHTML = currentFrame.reserves.map((reserve, index) => `
+    <div class="replay-reserve"><span>${ASSET_SYMBOLS[index]}</span><strong>${formatWad(reserve)}</strong></div>`).join("");
+}
+
+function renderVisuals() {
+  const currentFrame = frame();
+  renderTriangle(currentFrame);
+  renderSlice(currentFrame);
+  renderRangeSummary();
+  renderReplay(currentFrame);
+}
+
+function setReplayFrame(index) {
+  replayFrameIndex = Math.max(0, Math.min(replayFramesForFixture.length - 1, Number(index)));
+  renderVisuals();
 }
 
 function setWorkflowBadge(id, label, ready = false) {
@@ -278,6 +353,7 @@ async function connect() {
 renderManifestState();
 updateNetworkState();
 updateFaucet();
+renderVisuals();
 refreshWorkflowState();
 $("connect-wallet").addEventListener("click", connect);
 $("refresh-reads").addEventListener("click", refreshReads);
@@ -293,6 +369,12 @@ for (const id of ["swap-input", "swap-output-token", "swap-amount", "swap-slippa
   $(id).addEventListener("input", refreshWorkflowState);
   $(id).addEventListener("change", refreshWorkflowState);
 }
+$("slice-input").addEventListener("change", renderVisuals);
+$("slice-output").addEventListener("change", renderVisuals);
+$("replay-slider").addEventListener("input", (event) => setReplayFrame(event.target.value));
+$("replay-back").addEventListener("click", () => setReplayFrame(replayFrameIndex - 1));
+$("replay-reset").addEventListener("click", () => setReplayFrame(0));
+$("replay-forward").addEventListener("click", () => setReplayFrame(replayFrameIndex + 1));
 
 window.ethereum?.on?.("accountsChanged", ([account]) => {
   state.account = account ?? null;
