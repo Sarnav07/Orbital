@@ -9,7 +9,9 @@ export const DEFAULT_MANIFEST = Object.freeze({
   deployment: {
     status: "awaiting-deployment",
     hookAddress: null,
-    rangeShareBookAddress: null
+    rangeShareBookAddress: null,
+    swapRouterAddress: null,
+    positionManagerAddress: null
   },
   assets: [
     { symbol: "USDC", decimals: 6, address: null, faucet: null },
@@ -17,7 +19,11 @@ export const DEFAULT_MANIFEST = Object.freeze({
     { symbol: "DAI", decimals: 18, address: null, faucet: null },
     { symbol: "FRAX", decimals: 18, address: null, faucet: null }
   ],
-  ranges: [0, 1]
+  ranges: [0, 1],
+  workflows: {
+    deadlineSeconds: 300,
+    defaultSlippageBps: 50
+  }
 });
 
 export function isAddress(value) {
@@ -43,7 +49,7 @@ export function validateManifest(manifest) {
   }
 
   if (!manifest.deployment || typeof manifest.deployment.status !== "string") return "Deployment status is required.";
-  for (const field of ["hookAddress", "rangeShareBookAddress"]) {
+  for (const field of ["hookAddress", "rangeShareBookAddress", "swapRouterAddress", "positionManagerAddress"]) {
     if (manifest.deployment[field] !== null && !isAddress(manifest.deployment[field])) {
       return `Invalid ${field}.`;
     }
@@ -52,6 +58,12 @@ export function validateManifest(manifest) {
     if (!isAddress(manifest.deployment.hookAddress) || manifest.assets.some((asset) => !isAddress(asset.address))) {
       return "A ready deployment needs a hook address and all token addresses.";
     }
+  }
+  if (!manifest.workflows || !Number.isInteger(manifest.workflows.deadlineSeconds) || manifest.workflows.deadlineSeconds < 30 || manifest.workflows.deadlineSeconds > 3600) {
+    return "Workflow deadline must be between 30 seconds and one hour.";
+  }
+  if (!Number.isInteger(manifest.workflows.defaultSlippageBps) || manifest.workflows.defaultSlippageBps < 0 || manifest.workflows.defaultSlippageBps > 10_000) {
+    return "Workflow slippage must be expressed in basis points.";
   }
   return null;
 }

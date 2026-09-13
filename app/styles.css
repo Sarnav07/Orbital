@@ -50,6 +50,7 @@ button:focus-visible, select:focus-visible, a:focus-visible {
 .notice.error { border-color: var(--bad); color: #ffd0d0; }
 
 .hero-grid, .data-grid { display: grid; gap: 16px; margin-top: 16px; }
+.workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
 .hero-grid { grid-template-columns: minmax(0, 1.6fr) minmax(250px, .8fr); }
 .data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .panel { border: 1px solid var(--line); background: linear-gradient(145deg, var(--panel-light), var(--panel)); padding: clamp(18px, 3vw, 28px); }
@@ -78,6 +79,33 @@ dd { margin: 0; color: var(--orbit); font-family: ui-monospace, SFMono-Regular, 
 .asset-row strong { color: var(--orbit); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem; font-weight: 500; text-align: right; }
 .asset-row small { color: var(--quiet); display: block; margin-top: 3px; }
 
+.workflow-panel { position: relative; overflow: hidden; }
+.workflow-panel::after { content: ""; position: absolute; width: 260px; height: 260px; right: -160px; bottom: -180px; border: 1px solid #667bb34d; border-radius: 50%; box-shadow: 0 0 0 38px #667bb317, 0 0 0 77px #667bb30c; pointer-events: none; }
+.workflow-badge { border: 1px solid var(--line); color: var(--quiet); padding: 5px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .68rem; letter-spacing: .05em; text-transform: uppercase; }
+.workflow-badge.ready { border-color: var(--good); color: var(--good); }
+.trade-form, .liquidity-form { position: relative; z-index: 1; margin-top: 22px; }
+.amount-field { display: grid; grid-template-columns: 1fr auto; column-gap: 12px; align-items: center; border: 1px solid var(--line); background: #11182a; padding: 12px; }
+.amount-field label { grid-column: 1 / -1; color: var(--quiet); font-size: .76rem; margin-bottom: 4px; }
+.amount-field input, .amount-field output { min-width: 0; border: 0; background: transparent; color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.35rem; outline: 0; }
+.amount-field output { display: block; overflow: hidden; color: var(--quiet); font-size: 1rem; text-overflow: ellipsis; white-space: nowrap; }
+.amount-field select { border: 0; background: transparent; color: var(--orbit); font-weight: 700; outline: 0; }
+.muted-field { opacity: .84; }
+.route-flip { position: relative; z-index: 2; display: block; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--ember); margin: -1px auto; cursor: pointer; font-size: 1rem; }
+.trade-parameters { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 9px; margin-top: 12px; }
+.trade-parameters label, .trade-parameters span { display: flex; flex-direction: column; gap: 5px; color: var(--quiet); font-size: .72rem; }
+.trade-parameters input, .trade-parameters select { width: 100%; border: 1px solid var(--line); background: var(--night); color: var(--ink); padding: 7px; }
+.trade-parameters strong { color: var(--orbit); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86rem; font-weight: 500; }
+.workflow-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 9px; }
+.workflow-actions-three { grid-template-columns: repeat(3, 1fr); }
+.workflow-actions .button { white-space: nowrap; }
+
+.range-select, .shares-field { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; color: var(--quiet); font-size: .78rem; }
+.range-select select, .shares-field input { border: 1px solid var(--line); background: var(--night); color: var(--ink); padding: 8px; min-width: 0; }
+.liquidity-inputs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 13px 0; }
+.liquidity-input { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 7px; color: var(--orbit); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; }
+.liquidity-input input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--ink); outline: 0; text-align: right; }
+.shares-field { margin-top: 13px; }
+
 .faucet { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-top: 16px; }
 .faucet h2 { margin-bottom: 8px; }
 .faucet .state-copy { margin-bottom: 0; max-width: 60ch; }
@@ -91,12 +119,15 @@ footer { display: flex; justify-content: space-between; gap: 16px; color: var(--
   .masthead { grid-template-columns: auto 1fr; }
   .wallet-actions { grid-column: 1 / -1; justify-content: space-between; padding-top: 0; }
   .network-state { max-width: none; text-align: left; }
-  .hero-grid, .data-grid { grid-template-columns: 1fr; }
+  .hero-grid, .data-grid, .workflow-grid { grid-template-columns: 1fr; }
   .reserve-grid { grid-template-columns: repeat(2, 1fr); }
   .reserve:nth-child(2) { border-right: 0; }
   .reserve:nth-child(n + 3) { border-top: 1px solid var(--line); }
   .faucet { align-items: stretch; flex-direction: column; }
   .faucet-controls { grid-template-columns: 1fr; }
+  .trade-parameters { grid-template-columns: 1fr 1fr; }
+  .trade-parameters span { grid-column: 1 / -1; }
+  .workflow-actions-three { grid-template-columns: 1fr; }
   footer { flex-direction: column; }
 }
 

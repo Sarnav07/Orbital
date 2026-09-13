@@ -1,6 +1,7 @@
 import { DEFAULT_MANIFEST, deploymentReady, validateManifest } from "./manifest.js";
 import { connectWallet, matchingNetwork, mintCalldata, sendTransaction } from "./evm.js";
 import { readPoolSnapshot, readPositions, readWalletBalances } from "./reads.js";
+import { approveExact, deadlineFrom, liquidityAvailability, parseAmount, readAllowance, swapAvailability } from "./workflows.js";
 
 const manifest = DEFAULT_MANIFEST;
 const configError = validateManifest(manifest);
@@ -52,12 +53,127 @@ function renderManifestState() {
   $("network-name").textContent = `${manifest.network.name} (${manifest.network.chainId})`;
   $("deployment-status").textContent = manifest.deployment.status.replaceAll("-", " ");
   $("faucet-token").innerHTML = manifest.assets.map((asset) => `<option value="${asset.symbol}">${asset.symbol}</option>`).join("");
+  $("swap-input").innerHTML = manifest.assets.map((asset) => `<option value="${asset.symbol}">${asset.symbol}</option>`).join("");
+  $("swap-output-token").innerHTML = manifest.assets.map((asset, index) => `<option value="${asset.symbol}"${index === 1 ? " selected" : ""}>${asset.symbol}</option>`).join("");
+  $("liquidity-range").innerHTML = manifest.ranges.map((range) => `<option value="${range}">Range ${range}</option>`).join("");
+  $("liquidity-inputs").innerHTML = manifest.assets.map((asset) => `
+    <label class="liquidity-input">${asset.symbol}<input id="liquidity-${asset.symbol}" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>`).join("");
   if (configError) {
     setNotice(`Invalid deployment manifest: ${configError}`, "error");
     return;
   }
   if (!deploymentReady(manifest)) {
     setNotice("Awaiting a verified deployment manifest. Pool, balance and position values are unavailable—not zero.");
+  }
+}
+
+function setWorkflowBadge(id, label, ready = false) {
+  const badge = $(id);
+  badge.textContent = label;
+  badge.classList.toggle("ready", ready);
+}
+
+function selectedAsset(id) {
+  return manifest.assets.find((asset) => asset.symbol === $(id).value);
+}
+
+function swapDraft() {
+  const input = selectedAsset("swap-input");
+  const output = selectedAsset("swap-output-token");
+  if (!input || !output || input.symbol === output.symbol) throw new Error("Choose two different stablecoins.");
+  const amountRaw = parseAmount($("swap-amount").value, input.decimals);
+  const deadline = deadlineFrom(Math.floor(Date.now() / 1_000), Number($("swap-deadline").value));
+  return { input, output, amountRaw, deadline };
+}
+
+function setWorkflowDisabled(disabled) {
+  for (const id of ["swap-input", "swap-output-token", "swap-amount", "swap-slippage", "swap-deadline", "flip-route", "liquidity-range", "liquidity-shares", "add-liquidity", "remove-liquidity", "collect-fees"]) {
+    $(id).disabled = disabled;
+  }
+  for (const asset of manifest.assets) $("liquidity-" + asset.symbol).disabled = disabled;
+}
+
+async function refreshWorkflowState() {
+  if (configError) {
+    setWorkflowDisabled(true);
+    $("swap-approve").disabled = true;
+    $("swap-submit").disabled = true;
+    setWorkflowBadge("swap-badge", "Invalid manifest");
+    setWorkflowBadge("liquidity-badge", "Invalid manifest");
+    setState("swap-state", `Workflow unavailable: ${configError}`, "error");
+    setState("liquidity-state", `Workflow unavailable: ${configError}`, "error");
+    return;
+  }
+  const connected = Boolean(state.account && matchingNetwork(state.chainId, manifest));
+  setWorkflowDisabled(!connected);
+  $("swap-approve").disabled = true;
+  $("swap-submit").disabled = true;
+  $("add-liquidity").disabled = true;
+  $("remove-liquidity").disabled = true;
+  $("collect-fees").disabled = true;
+  $("swap-output").textContent = "Quote unavailable";
+  $("swap-minimum").textContent = "—";
+
+  if (!state.account) {
+    setWorkflowBadge("swap-badge", "Offline");
+    setWorkflowBadge("liquidity-badge", "Offline");
+    setState("swap-state", "Connect a wallet to prepare a route.");
+    setState("liquidity-state", "Connect a wallet to inspect range actions.");
+    return;
+  }
+  if (!matchingNetwork(state.chainId, manifest)) {
+    setWorkflowBadge("swap-badge", "Wrong network");
+    setWorkflowBadge("liquidity-badge", "Wrong network");
+    setState("swap-state", `Switch to ${manifest.network.name} before preparing a swap.`);
+    setState("liquidity-state", `Switch to ${manifest.network.name} before managing a range.`);
+    return;
+  }
+
+  const swapIssue = swapAvailability(manifest);
+  const liquidityIssue = liquidityAvailability(manifest);
+  setWorkflowBadge("swap-badge", swapIssue ? "Awaiting router" : "Quote required", !swapIssue);
+  setWorkflowBadge("liquidity-badge", liquidityIssue ? "Awaiting manager" : "Settlement required", !liquidityIssue);
+  setState("swap-state", swapIssue ?? "A solver quote and verified router payload are required before a swap can be submitted.");
+  setState("liquidity-state", liquidityIssue ?? "A verified position-manager payload is required before range actions can be submitted.");
+  if (swapIssue) return;
+
+  try {
+    const draft = swapDraft();
+    const allowance = await readAllowance(window.ethereum, draft.input.address, state.account, manifest.deployment.swapRouterAddress);
+    if (allowance < draft.amountRaw) {
+      $("swap-approve").disabled = false;
+      setState("swap-state", `Approve ${draft.input.symbol} before this route can be submitted.`);
+    } else {
+      setState("swap-state", "Input allowance confirmed. A solver quote and router payload are still required.", "ready");
+    }
+  } catch (error) {
+    if ($("swap-amount").value) setState("swap-state", `Route needs attention: ${error instanceof Error ? error.message : "invalid input"}`, "error");
+  }
+}
+
+function flipRoute() {
+  const input = $("swap-input");
+  const output = $("swap-output-token");
+  [input.value, output.value] = [output.value, input.value];
+  refreshWorkflowState();
+}
+
+async function approveSwapInput() {
+  try {
+    const draft = swapDraft();
+    $("swap-approve").disabled = true;
+    setState("swap-state", `Requesting ${draft.input.symbol} approval in your wallet…`);
+    const { hash } = await approveExact(window.ethereum, {
+      tokenAddress: draft.input.address,
+      owner: state.account,
+      spender: manifest.deployment.swapRouterAddress,
+      amountRaw: draft.amountRaw
+    });
+    setState("swap-state", `Approval confirmed: ${hash}. A verified quote is still required.`, "ready");
+  } catch (error) {
+    setState("swap-state", `Approval failed: ${error instanceof Error ? error.message : "wallet error"}`, "error");
+  } finally {
+    refreshWorkflowState();
   }
 }
 
@@ -150,6 +266,7 @@ async function connect() {
     Object.assign(state, await connectWallet(window.ethereum));
     updateNetworkState();
     updateFaucet();
+    await refreshWorkflowState();
     await refreshReads();
   } catch (error) {
     setNotice(error instanceof Error ? error.message : "Could not connect wallet.", "error");
@@ -161,20 +278,33 @@ async function connect() {
 renderManifestState();
 updateNetworkState();
 updateFaucet();
+refreshWorkflowState();
 $("connect-wallet").addEventListener("click", connect);
 $("refresh-reads").addEventListener("click", refreshReads);
 $("faucet-token").addEventListener("change", updateFaucet);
 $("faucet-form").addEventListener("submit", requestFaucet);
+$("swap-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  setState("swap-state", "Swap submission is unavailable until the solver and verified router payload are deployed.", "error");
+});
+$("swap-approve").addEventListener("click", approveSwapInput);
+$("flip-route").addEventListener("click", flipRoute);
+for (const id of ["swap-input", "swap-output-token", "swap-amount", "swap-slippage", "swap-deadline"]) {
+  $(id).addEventListener("input", refreshWorkflowState);
+  $(id).addEventListener("change", refreshWorkflowState);
+}
 
 window.ethereum?.on?.("accountsChanged", ([account]) => {
   state.account = account ?? null;
   updateNetworkState();
   updateFaucet();
+  refreshWorkflowState();
   refreshReads();
 });
 window.ethereum?.on?.("chainChanged", (chainId) => {
   state.chainId = Number.parseInt(chainId, 16);
   updateNetworkState();
   updateFaucet();
+  refreshWorkflowState();
   refreshReads();
 });

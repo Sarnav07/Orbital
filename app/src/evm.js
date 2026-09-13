@@ -31,6 +31,29 @@ export async function sendTransaction(provider, transaction) {
   return provider.request({ method: "eth_sendTransaction", params: [transaction] });
 }
 
+export async function transactionReceipt(provider, hash) {
+  if (!provider?.request) throw new WalletError("No browser wallet was found.");
+  const receipt = await provider.request({ method: "eth_getTransactionReceipt", params: [hash] });
+  if (receipt !== null && typeof receipt !== "object") throw new WalletError("RPC returned a malformed receipt.");
+  return receipt;
+}
+
+export async function waitForReceipt(provider, hash, { attempts = 20, pollMs = 1_500, sleep = defaultSleep } = {}) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const receipt = await transactionReceipt(provider, hash);
+    if (receipt) {
+      if (receipt.status !== "0x1") throw new WalletError("Transaction reverted on-chain.");
+      return receipt;
+    }
+    if (attempt + 1 < attempts) await sleep(pollMs);
+  }
+  throw new WalletError("Transaction is pending. Check your wallet or block explorer for its receipt.");
+}
+
+function defaultSleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 export function padWord(value) {
   const encoded = BigInt(value).toString(16);
   if (encoded.length > 64) throw new RangeError("Value does not fit in an EVM word.");
@@ -44,6 +67,14 @@ export function addressWord(address) {
 
 export function balanceOfCalldata(account) {
   return `0x70a08231${addressWord(account)}`;
+}
+
+export function allowanceCalldata(owner, spender) {
+  return `0xdd62ed3e${addressWord(owner)}${addressWord(spender)}`;
+}
+
+export function approveCalldata(spender, amountRaw) {
+  return `0x095ea7b3${addressWord(spender)}${padWord(amountRaw)}`;
 }
 
 export function mintCalldata(account, amountRaw) {

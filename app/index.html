@@ -78,6 +78,62 @@
         </article>
       </section>
 
+      <section class="workflow-grid" aria-label="Swap and liquidity workflows">
+        <article class="workflow-panel panel" aria-labelledby="swap-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">route ticket</p>
+              <h2 id="swap-heading">Swap from the shared book</h2>
+            </div>
+            <span id="swap-badge" class="workflow-badge">Offline</span>
+          </div>
+          <form id="swap-form" class="trade-form">
+            <div class="amount-field">
+              <label for="swap-amount">You pay</label>
+              <input id="swap-amount" inputmode="decimal" autocomplete="off" placeholder="0.0" />
+              <select id="swap-input" aria-label="Input token"></select>
+            </div>
+            <button id="flip-route" class="route-flip" type="button" aria-label="Flip swap route">↓</button>
+            <div class="amount-field muted-field">
+              <label for="swap-output">You receive</label>
+              <output id="swap-output">Quote unavailable</output>
+              <select id="swap-output-token" aria-label="Output token"></select>
+            </div>
+            <div class="trade-parameters">
+              <label>Slippage <input id="swap-slippage" inputmode="decimal" value="0.50" />%</label>
+              <label>Deadline <select id="swap-deadline"><option value="120">2 min</option><option value="300" selected>5 min</option><option value="900">15 min</option></select></label>
+              <span>Minimum received <strong id="swap-minimum">—</strong></span>
+            </div>
+            <p id="swap-state" class="state-copy" aria-live="polite">Connect a wallet to prepare a route.</p>
+            <div class="workflow-actions">
+              <button id="swap-approve" class="button button-quiet" type="button" disabled>Approve input token</button>
+              <button id="swap-submit" class="button button-primary" type="submit" disabled>Submit swap</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="workflow-panel panel" aria-labelledby="liquidity-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">range ticket</p>
+              <h2 id="liquidity-heading">Manage a range claim</h2>
+            </div>
+            <span id="liquidity-badge" class="workflow-badge">Offline</span>
+          </div>
+          <form id="liquidity-form" class="liquidity-form">
+            <label class="range-select" for="liquidity-range">Range <select id="liquidity-range"></select></label>
+            <div id="liquidity-inputs" class="liquidity-inputs"></div>
+            <label class="shares-field" for="liquidity-shares">Shares to remove <input id="liquidity-shares" inputmode="decimal" autocomplete="off" placeholder="0" /></label>
+            <p id="liquidity-state" class="state-copy" aria-live="polite">Connect a wallet to inspect range actions.</p>
+            <div class="workflow-actions workflow-actions-three">
+              <button id="add-liquidity" class="button button-primary" type="button" disabled>Add liquidity</button>
+              <button id="remove-liquidity" class="button button-quiet" type="button" disabled>Remove liquidity</button>
+              <button id="collect-fees" class="button button-quiet" type="button" disabled>Collect fees</button>
+            </div>
+          </form>
+        </article>
+      </section>
+
       <section class="faucet panel" aria-labelledby="faucet-heading">
         <div>
           <p class="eyebrow">test-token faucet</p>
