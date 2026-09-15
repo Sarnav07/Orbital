@@ -10,6 +10,8 @@ The route and range tickets in C16 validate decimal input exactly, bind a user-s
 
 C17's model inspector replays the versioned C14 WAD crossing fixture in the browser. Its triangle is an educational USDC/USDT/DAI projection that explicitly excludes FRAX; it is not a rendering of the four-asset invariant. Pair slices show shared reserve coordinates, while the range panel labels virtual floors separately from a tick's real-at-peg example. No panel claims live pool state or current redeemable LP inventory.
 
+C18 adds three fixture scenarios: a reference peg, a USDT depeg-style flow modelled as an explicit USDT→USDC transition, and an opposing recovery flow. The external reference marker is illustrative context, never a contract write or price oracle. Each frame independently recomputes the `Torus4` residual/drift witness. When a verified hook is deployed, the comparison panel checks a successful receipt and a separate current hook read; it does not claim that the receipt caused the observed state.
+
 Run the deterministic unit checks with:
 
 ```sh

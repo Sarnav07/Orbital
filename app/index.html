@@ -198,6 +198,64 @@
         </div>
       </section>
 
+      <section class="scenario-suite" aria-labelledby="scenario-heading">
+        <div class="visual-heading">
+          <div>
+            <p class="eyebrow">scenario console</p>
+            <h2 id="scenario-heading">Pressure is a trade, not a price override</h2>
+          </div>
+          <label class="scenario-picker" for="scenario-select">Scenario <select id="scenario-select"></select></label>
+        </div>
+
+        <div class="scenario-grid">
+          <article class="scenario-model panel" aria-labelledby="scenario-model-title">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">modeled state</p>
+                <h3 id="scenario-model-title">Reserve response</h3>
+              </div>
+              <span id="scenario-marker" class="scenario-marker">External marker —</span>
+            </div>
+            <p id="scenario-note" class="visual-copy"></p>
+            <svg id="scenario-plot" class="scenario-plot" viewBox="0 0 100 92" role="img" aria-label="Modeled four-asset reserve state"></svg>
+            <input id="scenario-slider" class="replay-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Scenario frame" />
+            <div class="replay-controls">
+              <button id="scenario-back" class="button button-quiet" type="button">Previous</button>
+              <button id="scenario-reset" class="button button-quiet" type="button">Reset</button>
+              <button id="scenario-forward" class="button button-primary" type="button">Next frame</button>
+            </div>
+            <p id="scenario-trade" class="scenario-trade" aria-live="polite"></p>
+          </article>
+
+          <article class="scenario-inspector panel" aria-labelledby="invariant-heading">
+            <p class="eyebrow">solver inspection</p>
+            <h3 id="invariant-heading">Fixed-partition witness</h3>
+            <p class="visual-copy">Computed from the displayed WAD reserves and current interior bitmap using the Torus4 residual rule.</p>
+            <dl class="invariant-list">
+              <div><dt>Interior radius</dt><dd id="inspect-interior">—</dd></div>
+              <div><dt>Boundary projection</dt><dd id="inspect-boundary">—</dd></div>
+              <div><dt>Boundary radius</dt><dd id="inspect-sphere">—</dd></div>
+              <div><dt>Relative residual</dt><dd id="inspect-residual">—</dd></div>
+              <div><dt>Drift rule</dt><dd id="inspect-status">—</dd></div>
+            </dl>
+          </article>
+        </div>
+
+        <article class="confirmation-panel panel" aria-labelledby="confirmation-heading">
+          <div>
+            <p class="eyebrow">simulated vs confirmed</p>
+            <h3 id="confirmation-heading">Compare a receipt and current hook read</h3>
+            <p id="confirmation-note" class="visual-copy">A receipt proves only transaction outcome. The app separately reads the current hook state and never attributes it to that hash.</p>
+          </div>
+          <form id="confirmation-form" class="confirmation-controls">
+            <label for="confirmation-hash">Transaction hash</label>
+            <input id="confirmation-hash" autocomplete="off" placeholder="0x…" spellcheck="false" />
+            <button id="confirmation-submit" class="button button-primary" type="submit" disabled>Compare hook state</button>
+          </form>
+          <p id="confirmation-state" class="state-copy" aria-live="polite">Awaiting a verified deployment manifest.</p>
+        </article>
+      </section>
+
       <section class="faucet panel" aria-labelledby="faucet-heading">
         <div>
           <p class="eyebrow">test-token faucet</p>

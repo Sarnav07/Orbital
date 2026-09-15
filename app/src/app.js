@@ -1,15 +1,18 @@
 import { DEFAULT_MANIFEST, deploymentReady, validateManifest } from "./manifest.js";
-import { connectWallet, matchingNetwork, mintCalldata, sendTransaction } from "./evm.js";
+import { connectWallet, matchingNetwork, mintCalldata, sendTransaction, transactionReceipt } from "./evm.js";
 import { readPoolSnapshot, readPositions, readWalletBalances } from "./reads.js";
 import { approveExact, deadlineFrom, liquidityAvailability, parseAmount, readAllowance, swapAvailability } from "./workflows.js";
 import { formatWad, pairSlice, replayFrames, tickSummary, triangleProjection } from "./geometry.js";
 import { ASSET_SYMBOLS, SEGMENTED_WAD_V1 } from "./replay-fixture.js";
+import { compareObservedFrame, SCENARIOS, scenarioById, scenarioFrames } from "./scenarios.js";
 
 const manifest = DEFAULT_MANIFEST;
 const configError = validateManifest(manifest);
 const state = { account: null, chainId: null };
 const replayFramesForFixture = replayFrames(SEGMENTED_WAD_V1);
 let replayFrameIndex = 0;
+let scenarioId = "peg";
+let scenarioFrameIndex = 0;
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value).replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
@@ -64,6 +67,7 @@ function renderManifestState() {
     <label class="liquidity-input">${asset.symbol}<input id="liquidity-${asset.symbol}" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>`).join("");
   $("slice-input").innerHTML = ASSET_SYMBOLS.map((symbol, index) => `<option value="${index}">${symbol}</option>`).join("");
   $("slice-output").innerHTML = ASSET_SYMBOLS.map((symbol, index) => `<option value="${index}"${index === 1 ? " selected" : ""}>${symbol}</option>`).join("");
+  $("scenario-select").innerHTML = SCENARIOS.map((scenario) => `<option value="${scenario.id}">${scenario.title}</option>`).join("");
   if (configError) {
     setNotice(`Invalid deployment manifest: ${configError}`, "error");
     return;
@@ -140,6 +144,88 @@ function renderVisuals() {
 function setReplayFrame(index) {
   replayFrameIndex = Math.max(0, Math.min(replayFramesForFixture.length - 1, Number(index)));
   renderVisuals();
+}
+
+function selectedScenario() {
+  return scenarioById(scenarioId);
+}
+
+function selectedScenarioFrames() {
+  return scenarioFrames(selectedScenario());
+}
+
+function currentScenarioFrame() {
+  return selectedScenarioFrames()[scenarioFrameIndex];
+}
+
+function renderScenario() {
+  const scenario = selectedScenario();
+  const frames = selectedScenarioFrames();
+  const current = currentScenarioFrame();
+  const maximum = current.reserves.reduce((largest, reserve) => reserve > largest ? reserve : largest, 0n);
+  $("scenario-select").value = scenario.id;
+  $("scenario-marker").textContent = `External marker ${scenario.externalMarker}`;
+  $("scenario-note").textContent = scenario.markerNote;
+  $("scenario-plot").innerHTML = current.reserves.map((reserve, index) => {
+    const y = 12 + index * 19;
+    const width = Number(reserve * 76n / maximum);
+    const active = current.action && (current.action.input === index || current.action.output === index) ? " active" : "";
+    return `<text class="scenario-label" x="0" y="${y + 6}">${ASSET_SYMBOLS[index]}</text><rect class="scenario-track" x="20" y="${y}" width="76" height="10" rx="1" /><rect class="scenario-bar${active}" x="20" y="${y}" width="${width}" height="10" rx="1" /><text class="scenario-value" x="100" y="${y + 7}">${formatWad(reserve)}</text>`;
+  }).join("");
+  $("scenario-slider").max = String(frames.length - 1);
+  $("scenario-slider").value = String(scenarioFrameIndex);
+  $("scenario-back").disabled = scenarioFrameIndex === 0;
+  $("scenario-forward").disabled = scenarioFrameIndex === frames.length - 1;
+  $("scenario-trade").textContent = current.action
+    ? `Modelled trade: ${ASSET_SYMBOLS[current.action.input]} +${formatWad(current.action.amountIn)} → ${ASSET_SYMBOLS[current.action.output]} −${formatWad(current.action.amountOut)} · bitmap 0b${current.interiorBitmap.toString(2).padStart(2, "0")}`
+    : "No modeled trade at this frame. Reserve coordinates remain exactly as replayed.";
+  $("inspect-interior").textContent = formatWad(current.inspection.rInterior);
+  $("inspect-boundary").textContent = formatWad(current.inspection.kBoundary);
+  $("inspect-sphere").textContent = formatWad(current.inspection.sBoundary);
+  $("inspect-residual").textContent = `${current.inspection.relativeResidualWad.toString()} / 1000000000`;
+  const status = $("inspect-status");
+  status.textContent = current.inspection.isWithinSolverBound ? "within 1e-9 bound" : "outside solver bound";
+  status.className = current.inspection.isWithinSolverBound ? "ok" : "warn";
+}
+
+function setScenarioFrame(index) {
+  const frames = selectedScenarioFrames();
+  scenarioFrameIndex = Math.max(0, Math.min(frames.length - 1, Number(index)));
+  renderScenario();
+}
+
+function selectScenario(id) {
+  scenarioId = id;
+  scenarioFrameIndex = scenarioById(id).trace.actions.length;
+  renderScenario();
+}
+
+function refreshConfirmationControls() {
+  const enabled = Boolean(state.account && matchingNetwork(state.chainId, manifest) && deploymentReady(manifest));
+  $("confirmation-submit").disabled = !enabled;
+  if (!enabled) {
+    setState("confirmation-state", "Awaiting a connected wallet on the configured network and a verified deployment manifest.");
+  }
+}
+
+async function compareConfirmedScenario(event) {
+  event.preventDefault();
+  const hash = $("confirmation-hash").value.trim();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) return setState("confirmation-state", "Enter a full 32-byte transaction hash.", "error");
+  try {
+    setState("confirmation-state", "Checking receipt, then reading the current hook state…");
+    const receipt = await transactionReceipt(window.ethereum, hash);
+    if (!receipt) return setState("confirmation-state", "Transaction is pending or unavailable from this wallet RPC.");
+    if (receipt.status !== "0x1") return setState("confirmation-state", "Transaction did not succeed on-chain; no state match is claimed.", "error");
+    const snapshot = await readPoolSnapshot(window.ethereum, manifest);
+    const comparison = compareObservedFrame(currentScenarioFrame(), {
+      reserves: snapshot.reserves.map((reserve) => reserve.raw),
+      interiors: snapshot.interiors
+    });
+    setState("confirmation-state", `Receipt succeeded. ${comparison.message} Receipt-to-state causation is not inferred.`, comparison.status === "match" ? "ready" : "error");
+  } catch (error) {
+    setState("confirmation-state", `Comparison failed: ${error instanceof Error ? error.message : "RPC error"}`, "error");
+  }
 }
 
 function setWorkflowBadge(id, label, ready = false) {
@@ -341,6 +427,7 @@ async function connect() {
     Object.assign(state, await connectWallet(window.ethereum));
     updateNetworkState();
     updateFaucet();
+    refreshConfirmationControls();
     await refreshWorkflowState();
     await refreshReads();
   } catch (error) {
@@ -354,6 +441,8 @@ renderManifestState();
 updateNetworkState();
 updateFaucet();
 renderVisuals();
+renderScenario();
+refreshConfirmationControls();
 refreshWorkflowState();
 $("connect-wallet").addEventListener("click", connect);
 $("refresh-reads").addEventListener("click", refreshReads);
@@ -375,11 +464,18 @@ $("replay-slider").addEventListener("input", (event) => setReplayFrame(event.tar
 $("replay-back").addEventListener("click", () => setReplayFrame(replayFrameIndex - 1));
 $("replay-reset").addEventListener("click", () => setReplayFrame(0));
 $("replay-forward").addEventListener("click", () => setReplayFrame(replayFrameIndex + 1));
+$("scenario-select").addEventListener("change", (event) => selectScenario(event.target.value));
+$("scenario-slider").addEventListener("input", (event) => setScenarioFrame(event.target.value));
+$("scenario-back").addEventListener("click", () => setScenarioFrame(scenarioFrameIndex - 1));
+$("scenario-reset").addEventListener("click", () => setScenarioFrame(0));
+$("scenario-forward").addEventListener("click", () => setScenarioFrame(scenarioFrameIndex + 1));
+$("confirmation-form").addEventListener("submit", compareConfirmedScenario);
 
 window.ethereum?.on?.("accountsChanged", ([account]) => {
   state.account = account ?? null;
   updateNetworkState();
   updateFaucet();
+  refreshConfirmationControls();
   refreshWorkflowState();
   refreshReads();
 });
@@ -387,6 +483,7 @@ window.ethereum?.on?.("chainChanged", (chainId) => {
   state.chainId = Number.parseInt(chainId, 16);
   updateNetworkState();
   updateFaucet();
+  refreshConfirmationControls();
   refreshWorkflowState();
   refreshReads();
 });
