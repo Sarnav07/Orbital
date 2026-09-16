@@ -2,13 +2,13 @@
 
 One pool for every stablecoin.
 
-An experimental Uniswap v4 hook applying Paradigm's Orbital geometry to a shared stablecoin reserve book. The initial target is four mock assets (USDC, USDT, DAI and FRAX), exposed through six pair interfaces on Unichain Sepolia. Pair interfaces are not independent liquidity reserves.
+An experimental Uniswap v4 hook applying Paradigm's Orbital geometry to a shared stablecoin reserve book. The initial target is four mock assets (USDC, USDT, DAI and FRAX), exposed through six pair interfaces. Unichain Sepolia is the configured target network, not a deployment claim. Pair interfaces are not independent liquidity reserves.
 
 ## Status
 
-Early implementation. No deployed hook, public swap interface or simulator is available yet. This repository is not audited and must not be used with real funds.
+Prototype implementation. No verified public deployment or public settlement interface is configured. This repository is not audited and must not be used with real funds.
 
-Implemented: token-unit normalization with explicit input/output rounding, overflow rejection, unit tests and fuzz tests. Decimal normalization does not assume that a token maintains its peg.
+Implemented: token-unit normalization with explicit input/output rounding and overflow rejection; bounded four-asset geometry; fixed-partition no-fee quotes; tick trap/recovery transitions; a v4 `beforeSwap` adapter; range inventory/share accounting; a dependency-free BigInt transition replayer; and a browser console with computed replay and depeg-style scenarios. Decimal normalization does not assume that a token maintains its peg.
 
 An independent Python reference covers sphere/tick geometry and no-fee segmented trades across the aggregate invariant. Solidity currently covers bounded four-asset geometry, fixed-partition no-fee quotes, bounded tick trap/recovery transitions, a v4 `beforeSwap` adapter, and per-range inventory attribution with proportional LP-share accounting. The adapter accepts canonical exact-input pair routes, advances one shared reserve book, and returns the official v4 custom delta that bypasses concentrated liquidity. Its local manager fixture verifies the delta's per-currency settlement legs; it is not a deployed PoolManager integration, production custody path, or public swap interface. Read the [protocol specification](docs/SPECIFICATION.md) and [reference guide](reference/README.md) for the supported mathematics and remaining obligations.
 
@@ -35,7 +35,7 @@ The checks compile contracts, check formatting, report bytecode sizes and run te
 
 The dependency-free BigInt transition replayer is in [`packages/simulator`](packages/simulator). Run `npm test` in that directory to verify the versioned WAD crossing trace without floating-point arithmetic.
 
-The browser-only [testnet console](app) connects an EIP-1193 wallet and can read the shared reserve book, wallet balances and configured range-share positions. Its committed manifest intentionally contains no deployment addresses; unavailable reads are presented as unavailable rather than zero.
+The browser-only [testnet console](app) connects an EIP-1193 wallet and can read the shared reserve book, wallet balances and configured range-share positions when a verified manifest is supplied. Its committed manifest intentionally contains no deployment addresses; unavailable reads are presented as unavailable rather than zero. See the [release package](docs/RELEASE.md) and [recording script](docs/DEMO_SCRIPT.md) for the reproducible demo path, measured evidence and current limits.
 
 ## Prior art
 
