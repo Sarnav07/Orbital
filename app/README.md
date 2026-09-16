@@ -1,6 +1,14 @@
 # Orbital testnet console
 
-This dependency-free browser app is C15's read surface for the four-asset Orbital demo. Serve the repository with any static-file server, then open `app/` in a browser with an EIP-1193 wallet.
+This dependency-free browser app is C15's read surface for the four-asset Orbital demo. Serve the **repository root** with any static-file server, then open `app/` in a browser with an EIP-1193 wallet. The app imports the committed simulator fixture from `packages/`, so serving `app/` as the server root is not supported.
+
+For a clean local smoke test:
+
+```sh
+# Run from the repository root.
+python3 -m http.server 4173
+# Open http://127.0.0.1:4173/app/
+```
 
 The committed manifest deliberately has no deployment, token or faucet addresses. It is valid configuration, but not a live deployment. Until a verified public-testnet deployment replaces those values, the app renders **awaiting deployment** rather than rendering unavailable reads as zero.
 
@@ -11,6 +19,8 @@ The route and range tickets in C16 validate decimal input exactly, bind a user-s
 C17's model inspector replays the versioned C14 WAD crossing fixture in the browser. Its triangle is an educational USDC/USDT/DAI projection that explicitly excludes FRAX; it is not a rendering of the four-asset invariant. Pair slices show shared reserve coordinates, while the range panel labels virtual floors separately from a tick's real-at-peg example. No panel claims live pool state or current redeemable LP inventory.
 
 C18 adds three fixture scenarios: a reference peg, a USDT depeg-style flow modelled as an explicit USDT→USDC transition, and an opposing recovery flow. The external reference marker is illustrative context, never a contract write or price oracle. Each frame independently recomputes the `Torus4` residual/drift witness. When a verified hook is deployed, the comparison panel checks a successful receipt and a separate current hook read; it does not claim that the receipt caused the observed state.
+
+The C19 validation matrix is in [VALIDATION.md](./VALIDATION.md). It separates checked offline behavior from the public-testnet smoke that remains blocked until verified addresses and a settlement ABI exist.
 
 Run the deterministic unit checks with:
 

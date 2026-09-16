@@ -58,3 +58,13 @@ test("pool reader refuses a malformed tick count before allocating reads", async
   const provider = { request: async ({ params }) => (params[0].data === SELECTORS.reserves ? words(1, 1, 1, 1) : words(17)) };
   await assert.rejects(readPoolSnapshot(provider, manifest), /unsupported tick count/);
 });
+
+test("an RPC failure stays an error instead of a fabricated zero balance", async () => {
+  const manifest = readyManifest();
+  const provider = {
+    request: async () => {
+      throw new Error("RPC disconnected");
+    }
+  };
+  await assert.rejects(readWalletBalances(provider, manifest, ACCOUNT), /RPC disconnected/);
+});

@@ -33,6 +33,23 @@ test("approval waits for a successful on-chain receipt", async () => {
   assert.match(requests[0].params[0].data, /^0x095ea7b3/);
 });
 
+test("a rejected approval is never treated as a confirmed allowance", async () => {
+  let receiptReads = 0;
+  const provider = {
+    request: async ({ method }) => {
+      if (method === "eth_sendTransaction") {
+        const error = new Error("User rejected the request.");
+        error.code = 4001;
+        throw error;
+      }
+      if (method === "eth_getTransactionReceipt") receiptReads += 1;
+      return null;
+    }
+  };
+  await assert.rejects(approveExact(provider, { tokenAddress: TOKEN, owner: ACCOUNT, spender: SPENDER, amountRaw: 1n }), /User rejected/);
+  assert.equal(receiptReads, 0);
+});
+
 test("prepared submissions reject absent payloads and surface a reverted receipt", async () => {
   await assert.rejects(submitPrepared({}, { from: ACCOUNT }), /verified transaction payload/);
   const provider = {
