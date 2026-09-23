@@ -156,6 +156,18 @@ npm test
 
 See [`packages/simulator/README.md`](packages/simulator/README.md) for its scope and constraints.
 
+### Deploy the frontend
+
+The Vercel project is configured from the repository root because the React app imports the shared BigInt simulator and fixture packages:
+
+```sh
+npx vercel --prod
+```
+
+The root [`vercel.json`](vercel.json) installs and builds `app/`, publishes `app/dist`, and preserves the `/app` and `/docs` client-side routes.
+
+Live frontend: [orbital-protocol-mu.vercel.app](https://orbital-protocol-mu.vercel.app)
+
 ## Deployment posture
 
 Unichain Sepolia is a configured target environment, **not** a deployment claim. [`DeployOrbitalHook.s.sol`](contracts/script/DeployOrbitalHook.s.sol) mines a CREATE2 salt from the exact constructor calldata to satisfy the Uniswap v4 permission-address pattern (`beforeSwap` and `beforeSwapReturnDelta`).
