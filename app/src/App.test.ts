@@ -28,12 +28,13 @@ describe("Orbital documentation story", () => {
   it("keeps the new homepage narrative grounded in the prototype", () => {
     expect(problemCards.map((card) => card[2])).toEqual([
       "Fragmented",
-      "Pair-local",
-      "Visible",
+      "Flat",
+      "Fragile",
     ]);
     expect(geometryCards.map((card) => card[0])).toEqual([
-      "01 / SPHERE4",
-      "02 / TICK BOUNDARY",
+      "01 / SPHERE",
+      "02 / TICKS",
+      "03 / TORUS",
     ]);
     expect(homePrinciples.map((principle) => principle[1])).toEqual([
       "Shared route state",

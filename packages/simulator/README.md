@@ -1,5 +1,5 @@
-# Orbital transition replay
+# Orbital browser simulator
 
-This browser-native ES module replays versioned WAD traces with JavaScript `BigInt`. It applies exact settled input/output deltas and verifies transition shape, reserve bounds, and expected final state without floating-point arithmetic.
+This dependency-free ES module contains two browser-native `BigInt` tools: a versioned WAD transition replayer and a bounded exact-input quote engine mirroring the implemented Solidity solver. The quote engine advances four-asset reserve state, records tick crossings and recovery, and rejects unsupported or out-of-domain requests without using floating-point arithmetic.
 
-It is a trace replayer, not an independent pricing solver. The future quote simulator must implement and compare the bounded Solidity solver before it can quote new user inputs. Run `npm test` from this directory.
+It is an explanatory prototype model, not an oracle, live pool read, wallet interface, or settlement service. Run `npm test` from this directory.

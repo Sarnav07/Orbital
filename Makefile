@@ -1,8 +1,8 @@
-.PHONY: check contracts-check reference-check simulator-check
+.PHONY: check contracts-check reference-check simulator-check app-check
 
 PYTHON ?= python3
 
-check: contracts-check reference-check simulator-check
+check: contracts-check reference-check simulator-check app-check
 
 contracts-check:
 	cd contracts && forge fmt --check
@@ -14,3 +14,8 @@ reference-check:
 
 simulator-check:
 	cd packages/simulator && npm test
+
+app-check:
+	cd app && npm test
+	cd app && npm run typecheck
+	cd app && npm run build
