@@ -42,22 +42,32 @@ contract RangeShareBook4 {
         emit Bootstrapped(rangeId, owner, shares);
     }
 
-    function addProportional(uint256 rangeId, uint256[4] memory amounts) external returns (uint256 mintedShares) {
+    /// @dev Controller-only: the controller must have received `amounts` before recording them.
+    function addProportional(uint256 rangeId, address owner, uint256[4] memory amounts)
+        external
+        onlyController
+        returns (uint256 mintedShares)
+    {
         (RangeLiquidity4.ShareState memory next, uint256 minted) =
             RangeLiquidity4.addProportional(_positions[rangeId], amounts);
         _positions[rangeId] = next;
-        sharesOf[rangeId][msg.sender] += minted;
-        emit SharesMinted(rangeId, msg.sender, minted);
+        sharesOf[rangeId][owner] += minted;
+        emit SharesMinted(rangeId, owner, minted);
         return minted;
     }
 
-    function removeProportional(uint256 rangeId, uint256 shares) external returns (uint256[4] memory amountsOut) {
-        if (shares > sharesOf[rangeId][msg.sender]) revert InsufficientOwnerShares();
+    /// @dev Controller-only: the controller pays the returned amounts to `owner`.
+    function removeProportional(uint256 rangeId, address owner, uint256 shares)
+        external
+        onlyController
+        returns (uint256[4] memory amountsOut)
+    {
+        if (shares > sharesOf[rangeId][owner]) revert InsufficientOwnerShares();
         (RangeLiquidity4.ShareState memory next, uint256[4] memory withdrawn) =
             RangeLiquidity4.removeProportional(_positions[rangeId], shares);
         _positions[rangeId] = next;
-        sharesOf[rangeId][msg.sender] -= shares;
-        emit SharesBurned(rangeId, msg.sender, shares);
+        sharesOf[rangeId][owner] -= shares;
+        emit SharesBurned(rangeId, owner, shares);
         return withdrawn;
     }
 

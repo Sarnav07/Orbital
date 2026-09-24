@@ -30,11 +30,14 @@ contract DeployOrbitalHook is Script {
         ticks[1] = SegmentedTorus4.Tick(100 * WAD, 130 * WAD, true);
         IPoolManager manager = IPoolManager(vm.envAddress("POOL_MANAGER"));
         bytes memory initCode = abi.encodePacked(
-            type(OrbitalV4Hook).creationCode, abi.encode(manager, currencies, reserves, ticks, uint24(500), int24(60))
+            type(OrbitalV4Hook).creationCode,
+            abi.encode(manager, currencies, [uint8(6), 6, 18, 18], reserves, ticks, uint24(500), int24(60), deployer)
         );
         salt = HookAddressMiner.find(deployer, keccak256(initCode), 136, 100_000);
         vm.startBroadcast(privateKey);
-        hook = new OrbitalV4Hook{salt: salt}(manager, currencies, reserves, ticks, 500, 60);
+        hook = new OrbitalV4Hook{salt: salt}(
+            manager, currencies, [uint8(6), 6, 18, 18], reserves, ticks, 500, 60, deployer
+        );
         vm.stopBroadcast();
         emit HookDeployed(address(hook), salt, address(manager));
     }

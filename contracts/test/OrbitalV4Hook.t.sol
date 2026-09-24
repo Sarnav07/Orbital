@@ -1,287 +1,430 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
+import {Test} from "forge-std/Test.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Currency} from "v4-core/types/Currency.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapDelta.sol";
-import {SwapParams} from "v4-core/types/PoolOperation.sol";
+import {SwapParams, ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
+import {Hooks} from "v4-core/libraries/Hooks.sol";
+import {CustomRevert} from "v4-core/libraries/CustomRevert.sol";
+import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
+import {PoolModifyLiquidityTest} from "v4-core/test/PoolModifyLiquidityTest.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol";
 
 import {OrbitalV4Hook} from "../src/OrbitalV4Hook.sol";
 import {SegmentedTorus4} from "../src/math/SegmentedTorus4.sol";
-import {RangeLiquidity4} from "../src/math/RangeLiquidity4.sol";
-import {HookAddressMiner} from "../src/deploy/HookAddressMiner.sol";
 import {Torus4} from "../src/math/Torus4.sol";
+import {HookAddressMiner} from "../src/deploy/HookAddressMiner.sol";
 
-/// @notice Minimal manager-side accounting fixture for the v4 custom-delta leg.
-/// @dev It does not emulate PoolManager internals. It calls the hook as the
-///      authorized manager and settles the official before-swap delta into a
-///      transparent per-currency test ledger.
-contract V4SettlementFixture {
-    using BeforeSwapDeltaLibrary for BeforeSwapDelta;
-
-    mapping(address => uint256) public receivedByPool;
-    mapping(address => uint256) public paidByPool;
-
-    error InvalidHookResponse();
-    error InvalidDelta();
-
-    function executeExactIn(OrbitalV4Hook hook, PoolKey memory key, SwapParams memory params)
-        external
-        returns (uint256 amountIn, uint256 amountOut)
-    {
-        (bytes4 selector, BeforeSwapDelta delta,) = hook.beforeSwap(address(this), key, params, bytes(""));
-        if (selector != IHooks.beforeSwap.selector || params.amountSpecified >= 0) revert InvalidHookResponse();
-
-        amountIn = uint256(-params.amountSpecified);
-        int128 specified = delta.getSpecifiedDelta();
-        int128 unspecified = delta.getUnspecifiedDelta();
-        // The hook rejects amounts above int128.max before returning this delta.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int128 expectedSpecified = int128(int256(amountIn));
-        if (specified != expectedSpecified || unspecified >= 0) revert InvalidDelta();
-        // `unspecified` is negative int128, so negating through int256 is safe.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        amountOut = uint256(-int256(unspecified));
-
-        Currency input = params.zeroForOne ? key.currency0 : key.currency1;
-        Currency output = params.zeroForOne ? key.currency1 : key.currency0;
-        receivedByPool[Currency.unwrap(input)] += amountIn;
-        paidByPool[Currency.unwrap(output)] += amountOut;
-    }
-}
-
-contract OrbitalV4HookTest {
+/// @notice End-to-end tests through a real v4 PoolManager and the v4-core test routers.
+contract OrbitalV4HookTest is Test {
     uint256 private constant WAD = 1e18;
     uint24 private constant FEE = 500;
     int24 private constant TICK_SPACING = 60;
+    uint256 private constant RADIUS = 10_000_000 * WAD;
+    uint160 private constant FLAGS = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+        | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG;
 
-    Currency private constant USDC = Currency.wrap(address(0x1001));
-    Currency private constant USDT = Currency.wrap(address(0x1002));
-    Currency private constant DAI = Currency.wrap(address(0x1003));
-    Currency private constant FRAX = Currency.wrap(address(0x1004));
+    uint160 private constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
+    uint160 private constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
+    uint160 private constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
 
-    V4SettlementFixture private fixture = new V4SettlementFixture();
-    OrbitalV4Hook private hook = _deployHook();
+    IPoolManager private manager;
+    PoolSwapTest private swapRouter;
+    PoolModifyLiquidityTest private modifyLiquidityRouter;
+    OrbitalV4Hook private hook;
+    Currency[4] private currencies;
+    uint8[4] private decimals;
+    address private alice = makeAddr("alice");
 
-    function testTwoCanonicalPairsMutateOneSharedReserveBook() public {
-        uint256[4] memory initial = hook.reserves();
-
-        (uint256 firstIn, uint256 firstOut) = fixture.executeExactIn(hook, _key(USDC, USDT), _exactIn(true, 10 * WAD));
-        uint256[4] memory afterFirst = hook.reserves();
-        (uint256 secondIn, uint256 secondOut) = fixture.executeExactIn(hook, _key(DAI, FRAX), _exactIn(true, 15 * WAD));
-        uint256[4] memory afterSecond = hook.reserves();
-
-        assert(firstIn == 10 * WAD && firstOut > 0);
-        assert(secondIn == 15 * WAD && secondOut > 0);
-        assert(afterFirst[0] == initial[0] + firstIn);
-        assert(afterFirst[1] == initial[1] - firstOut);
-        assert(afterFirst[2] == initial[2] && afterFirst[3] == initial[3]);
-        assert(afterSecond[0] == afterFirst[0] && afterSecond[1] == afterFirst[1]);
-        assert(afterSecond[2] == afterFirst[2] + secondIn);
-        assert(afterSecond[3] == afterFirst[3] - secondOut);
-        assert(fixture.receivedByPool(Currency.unwrap(USDC)) == firstIn);
-        assert(fixture.paidByPool(Currency.unwrap(USDT)) == firstOut);
-        assert(fixture.receivedByPool(Currency.unwrap(DAI)) == secondIn);
-        assert(fixture.paidByPool(Currency.unwrap(FRAX)) == secondOut);
-        assert(Torus4.isInvariant(hook.state(), afterSecond));
+    function setUp() public {
+        manager = IPoolManager(deployCode("PoolManager.sol:PoolManager", abi.encode(address(this))));
+        swapRouter = new PoolSwapTest(manager);
+        modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);
+        _deployTokens();
+        hook = _deployHook(address(this));
+        _initializePools(hook);
+        _fund(address(this));
+        hook.seed(address(this));
     }
 
-    function testCanonicalPairAcceptsBothDirections() public {
-        (uint256 amountIn, uint256 amountOut) =
-            fixture.executeExactIn(hook, _key(USDC, USDT), _exactIn(false, 10 * WAD));
+    // ------------------------------------------------------------------
+    // Seeding and custody
+    // ------------------------------------------------------------------
+
+    function testSwapsRevertBeforeSeed() public {
+        OrbitalV4Hook unseeded = _deployHook(address(0xB0B));
+        _initializePools(unseeded);
+        _expectHookRevert(
+            address(unseeded), IHooks.beforeSwap.selector, abi.encodeWithSelector(OrbitalV4Hook.NotSeeded.selector)
+        );
+        _swapOn(unseeded, 0, 1, 10 ** decimals[0], "");
+    }
+
+    function testOnlyOwnerSeedsOnce() public {
+        vm.expectRevert(OrbitalV4Hook.AlreadySeeded.selector);
+        hook.seed(address(this));
+
+        OrbitalV4Hook other = _deployHook(address(0xB0B));
+        vm.expectRevert(OrbitalV4Hook.OnlyOwner.selector);
+        other.seed(address(this));
+    }
+
+    function testSeedHoldsRealInventoryAsManagerClaims() public view {
+        (uint256[4] memory custody, uint256[4] memory required) = hook.solvency();
         uint256[4] memory reserves = hook.reserves();
-
-        assert(amountIn == 10 * WAD && amountOut > 0);
-        assert(reserves[1] == 110 * WAD);
-        assert(reserves[0] < 100 * WAD);
-        assert(fixture.receivedByPool(Currency.unwrap(USDT)) == amountIn);
-        assert(fixture.paidByPool(Currency.unwrap(USDC)) == amountOut);
-    }
-
-    function testDeclaresOnlyTheRequiredBeforeSwapPermissions() public view {
-        // This pattern is validated against a mined address in the deployment chunk.
-        // C08 exposes it without pretending this test deployment has that address.
-        assert(hook.hookPermissions().beforeSwap);
-        assert(hook.hookPermissions().beforeSwapReturnDelta);
-        assert(!hook.hookPermissions().afterSwap);
-        assert(!hook.hookPermissions().afterSwapReturnDelta);
-    }
-
-    function testAttributionReflectsTheSharedBookAfterABoundaryCrossing() public {
-        fixture.executeExactIn(hook, _key(USDC, USDT), _exactIn(true, 100 * WAD));
-        RangeLiquidity4.Attribution[] memory ranges = hook.rangeAttributions();
-
-        assert(ranges.length == 2);
-        assert(!ranges[0].isInterior && ranges[1].isInterior);
-        for (uint256 asset; asset < 4; ++asset) {
-            assert(ranges[0].coordinates[asset] >= ranges[0].virtualOffset);
-            assert(ranges[1].coordinates[asset] >= ranges[1].virtualOffset);
+        for (uint256 i; i < 4; ++i) {
+            assertEq(custody[i], manager.balanceOf(address(hook), currencies[i].toId()));
+            assertGe(custody[i], required[i]);
+            assertGt(required[i], 0);
+            // Concentration: real inventory is far below the virtual coordinate.
+            assertLt(required[i] * _scale(i), reserves[i] / 2);
+        }
+        for (uint256 range; range < 3; ++range) {
+            assertGt(hook.sharesOf(range, address(this)), 0);
         }
     }
 
-    function testStatefulAllPairsAndCrossingSequenceMatchesEngine() public {
-        Torus4.State memory modelState = Torus4.State({rInterior: 200 * WAD, kBoundary: 0, sBoundary: 0});
-        SegmentedTorus4.Tick[] memory modelTicks = _ticks();
-        uint256[4] memory modelReserves = [uint256(100 * WAD), 100 * WAD, 100 * WAD, 100 * WAD];
-        uint8[14] memory inputs = [uint8(0), 1, 0, 1, 0, 2, 0, 3, 1, 2, 1, 3, 2, 3];
-        uint8[14] memory outputs = [uint8(1), 0, 1, 0, 2, 0, 3, 0, 2, 1, 3, 1, 3, 2];
-        uint256[14] memory amounts =
-            [uint256(100 * WAD), 10 * WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD, WAD];
+    // ------------------------------------------------------------------
+    // Swaps
+    // ------------------------------------------------------------------
 
-        for (uint256 action; action < inputs.length; ++action) {
-            SegmentedTorus4.Result memory expected = SegmentedTorus4.swapExactIn(
-                modelState, modelTicks, modelReserves, inputs[action], outputs[action], amounts[action]
-            );
-            (uint256 amountIn, uint256 actualOut) = _executeIndexed(inputs[action], outputs[action], amounts[action]);
-            uint256[4] memory actualReserves = hook.reserves();
-            assert(amountIn == amounts[action]);
-            assert(actualOut == expected.amountOut);
-            assert(hook.state().rInterior == expected.state.rInterior);
-            assert(hook.state().kBoundary == expected.state.kBoundary);
-            assert(hook.state().sBoundary == expected.state.sBoundary);
-            for (uint256 asset; asset < 4; ++asset) {
-                assert(actualReserves[asset] == expected.reserves[asset]);
+    function testSixDecimalInputPaysEighteenDecimalOutput() public {
+        (uint8 usdc, uint8 dai) = (_indexOf("USDC"), _indexOf("DAI"));
+        uint256 amountIn = 1_000 * 10 ** decimals[usdc];
+        (uint256 paid, uint256 received) = _swapAndMeasure(usdc, dai, amountIn, "");
+
+        assertEq(paid, amountIn);
+        assertGt(received, 998 * 10 ** decimals[dai]);
+        assertLt(received, 1_000 * 10 ** decimals[dai]);
+        _assertSolvent();
+    }
+
+    function testEighteenDecimalInputPaysSixDecimalOutput() public {
+        (uint8 dai, uint8 usdt) = (_indexOf("DAI"), _indexOf("USDT"));
+        uint256 amountIn = 1_000 * 10 ** decimals[dai];
+        (uint256 paid, uint256 received) = _swapAndMeasure(dai, usdt, amountIn, "");
+
+        assertEq(paid, amountIn);
+        assertGt(received, 998 * 10 ** decimals[usdt]);
+        assertLt(received, 1_000 * 10 ** decimals[usdt]);
+        _assertSolvent();
+    }
+
+    function testAllSixPairsAdvanceOneSharedBook() public {
+        for (uint8 a; a < 4; ++a) {
+            for (uint8 b = a + 1; b < 4; ++b) {
+                uint256[4] memory before = hook.reserves();
+                _swapAndMeasure(a, b, 100 * 10 ** decimals[a], "");
+                uint256[4] memory afterSwap = hook.reserves();
+                for (uint8 i; i < 4; ++i) {
+                    if (i == a) assertGt(afterSwap[i], before[i]);
+                    else if (i == b) assertLt(afterSwap[i], before[i]);
+                    else assertEq(afterSwap[i], before[i]);
+                }
+                assertTrue(Torus4.isInvariant(hook.state(), afterSwap));
+                _assertSolvent();
             }
-            modelState = expected.state;
-            modelReserves = expected.reserves;
-            _applyBitmap(modelTicks, expected.interiorBitmap);
         }
     }
 
-    function testGasBudgetForOrdinaryAndCrossingRoutes() public {
-        uint256 ordinaryStart = gasleft();
-        fixture.executeExactIn(hook, _key(USDC, USDT), _exactIn(true, 10 * WAD));
-        uint256 ordinaryUsed = ordinaryStart - gasleft();
-        assert(ordinaryUsed <= 1_500_000);
+    function testCrossingAndRecoveryThroughManager() public {
+        (uint8 input, uint8 output) = (_indexOf("USDC"), _indexOf("DAI"));
+        _swapAndMeasure(input, output, 1_000_000 * 10 ** decimals[input], "");
+        assertFalse(hook.tickIsInterior(0));
+        _assertSolvent();
 
-        // A fresh hook keeps this route on the known first-boundary path.
-        V4SettlementFixture crossingFixture = new V4SettlementFixture();
-        OrbitalV4Hook crossingHook = _deployHookFor(crossingFixture);
-        uint256 crossingStart = gasleft();
-        crossingFixture.executeExactIn(crossingHook, _keyFor(crossingHook, USDC, USDT), _exactIn(true, 100 * WAD));
-        uint256 crossingUsed = crossingStart - gasleft();
-        assert(crossingUsed <= 3_500_000);
+        _swapAndMeasure(output, input, 1_000_000 * 10 ** decimals[output], "");
+        assertTrue(hook.tickIsInterior(0));
+        _assertSolvent();
     }
 
-    function testRejectsNonCanonicalOrUnknownPair() public {
-        PoolKey memory reversed = _key(USDC, USDT);
-        reversed.currency0 = USDT;
-        reversed.currency1 = USDC;
-        _expect(
-            abi.encodeCall(fixture.executeExactIn, (hook, reversed, _exactIn(true, WAD))),
-            OrbitalV4Hook.UnsupportedPool.selector
-        );
+    function testFeeAccruesToRangesAndLpCollects() public {
+        (uint8 input, uint8 output) = (_indexOf("USDC"), _indexOf("USDT"));
+        uint256 amountIn = 10_000 * 10 ** decimals[input];
+        _swapAndMeasure(input, output, amountIn, "");
+        uint256 fee = (amountIn * FEE + 999_999) / 1_000_000;
 
-        PoolKey memory unknown = _key(USDC, USDT);
-        unknown.currency1 = Currency.wrap(address(0x2000));
-        _expect(
-            abi.encodeCall(fixture.executeExactIn, (hook, unknown, _exactIn(true, WAD))),
-            OrbitalV4Hook.UnsupportedCurrency.selector
-        );
+        uint256 before = MockERC20(Currency.unwrap(currencies[input])).balanceOf(address(this));
+        uint256 collected;
+        for (uint256 range; range < 3; ++range) {
+            collected += hook.collectFees(range, address(this))[input];
+        }
+        uint256 afterCollect = MockERC20(Currency.unwrap(currencies[input])).balanceOf(address(this));
+
+        assertEq(afterCollect - before, collected);
+        assertLe(collected, fee);
+        // Locked minimum shares and per-share rounding retain only a negligible remainder.
+        assertGe(collected, fee - fee / 1_000);
+        _assertSolvent();
     }
 
-    function testRejectsPairMetadataThatDoesNotBelongToThisHook() public {
-        PoolKey memory wrongFee = _key(USDC, USDT);
-        wrongFee.fee = FEE + 1;
-        _expect(
-            abi.encodeCall(fixture.executeExactIn, (hook, wrongFee, _exactIn(true, WAD))),
-            OrbitalV4Hook.UnsupportedPool.selector
-        );
+    function testSlippageAndDeadlineAreEnforced() public {
+        (uint8 input, uint8 output) = (_indexOf("DAI"), _indexOf("FRAX"));
+        uint256 amountIn = 10 * 10 ** decimals[input];
 
-        PoolKey memory wrongHook = _key(USDC, USDT);
-        wrongHook.hooks = IHooks(address(0xBEEF));
-        _expect(
-            abi.encodeCall(fixture.executeExactIn, (hook, wrongHook, _exactIn(true, WAD))),
-            OrbitalV4Hook.UnsupportedPool.selector
+        _expectHookRevert(
+            address(hook), IHooks.beforeSwap.selector, abi.encodeWithSelector(OrbitalV4Hook.SlippageExceeded.selector)
         );
+        _swapOn(hook, input, output, amountIn, abi.encode(amountIn, block.timestamp));
+
+        _expectHookRevert(
+            address(hook), IHooks.beforeSwap.selector, abi.encodeWithSelector(OrbitalV4Hook.Expired.selector)
+        );
+        _swapOn(hook, input, output, amountIn, abi.encode(uint256(0), block.timestamp - 1));
+
+        (, uint256 received) = _swapAndMeasure(input, output, amountIn, abi.encode(9 * WAD, block.timestamp));
+        assertGe(received, 9 * WAD);
     }
 
-    function testRejectsExactOutputAndDirectCalls() public {
-        // WAD is a small positive constant that is exactly representable as int256.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        SwapParams memory exactOut = SwapParams({zeroForOne: true, amountSpecified: int256(WAD), sqrtPriceLimitX96: 0});
-        _expect(
-            abi.encodeCall(fixture.executeExactIn, (hook, _key(USDC, USDT), exactOut)),
-            OrbitalV4Hook.ExactOutputUnsupported.selector
+    function testExactOutputIsRejected() public {
+        PoolKey memory key = _key(hook, 0, 1);
+        _expectHookRevert(
+            address(hook),
+            IHooks.beforeSwap.selector,
+            abi.encodeWithSelector(OrbitalV4Hook.ExactOutputUnsupported.selector)
         );
-
-        (bool success, bytes memory result) = address(hook)
-            .call(abi.encodeCall(hook.beforeSwap, (address(this), _key(USDC, USDT), _exactIn(true, WAD), bytes(""))));
-        assert(!success && result.length >= 4);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assert(bytes4(result) == OrbitalV4Hook.OnlyPoolManager.selector);
-    }
-
-    function _deployHook() private returns (OrbitalV4Hook deployed) {
-        return _deployHookFor(fixture);
-    }
-
-    function _deployHookFor(V4SettlementFixture managerFixture) private returns (OrbitalV4Hook deployed) {
-        Currency[4] memory currencies = [USDC, USDT, DAI, FRAX];
-        uint256[4] memory reserves = [uint256(100 * WAD), 100 * WAD, 100 * WAD, 100 * WAD];
-        SegmentedTorus4.Tick[] memory ticks = new SegmentedTorus4.Tick[](2);
-        ticks[0] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 110 * WAD, isInterior: true});
-        ticks[1] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 130 * WAD, isInterior: true});
-        bytes memory initCode = abi.encodePacked(
-            type(OrbitalV4Hook).creationCode,
-            abi.encode(IPoolManager(address(managerFixture)), currencies, reserves, ticks, FEE, TICK_SPACING)
-        );
-        bytes32 salt = HookAddressMiner.find(address(this), keccak256(initCode), 136, 100_000);
-        deployed = new OrbitalV4Hook{salt: salt}(
-            IPoolManager(address(managerFixture)), currencies, reserves, ticks, FEE, TICK_SPACING
+        swapRouter.swap(
+            key,
+            SwapParams({zeroForOne: true, amountSpecified: 1e6, sqrtPriceLimitX96: MIN_PRICE_LIMIT}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
         );
     }
 
-    function _key(Currency currency0, Currency currency1) private view returns (PoolKey memory) {
-        return _keyFor(hook, currency0, currency1);
+    function testNativeLiquidityIsRejected() public {
+        _expectHookRevert(
+            address(hook),
+            IHooks.beforeAddLiquidity.selector,
+            abi.encodeWithSelector(OrbitalV4Hook.UnsupportedCallback.selector)
+        );
+        modifyLiquidityRouter.modifyLiquidity(
+            _key(hook, 0, 1),
+            ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1e18, salt: 0}),
+            ""
+        );
     }
 
-    function _keyFor(OrbitalV4Hook target, Currency currency0, Currency currency1)
-        private
-        pure
-        returns (PoolKey memory)
-    {
+    function testForeignPoolsCannotInitialize() public {
+        PoolKey memory key = _key(hook, 0, 1);
+        key.fee = FEE + 1;
+        _expectHookRevert(
+            address(hook),
+            IHooks.beforeInitialize.selector,
+            abi.encodeWithSelector(OrbitalV4Hook.UnsupportedPool.selector)
+        );
+        manager.initialize(key, SQRT_PRICE_1_1);
+    }
+
+    function testDirectHookCallsAreRejected() public {
+        vm.expectRevert(OrbitalV4Hook.OnlyPoolManager.selector);
+        hook.beforeSwap(
+            address(this),
+            _key(hook, 0, 1),
+            SwapParams({zeroForOne: true, amountSpecified: -1e6, sqrtPriceLimitX96: MIN_PRICE_LIMIT}),
+            ""
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Range liquidity
+    // ------------------------------------------------------------------
+
+    function testAddAndRemoveLiquidityRoundTrip() public {
+        _fund(alice);
+        uint256 range = 1;
+        uint256 shares = hook.totalShares(range) / 100;
+        uint256[4] memory quotedIn = hook.previewAddLiquidity(range, shares);
+
+        vm.prank(alice);
+        uint256[4] memory amountsIn = hook.addLiquidity(range, shares, quotedIn, block.timestamp);
+        assertEq(hook.sharesOf(range, alice), shares);
+        _assertSolvent();
+        assertTrue(Torus4.isInvariant(hook.state(), hook.reserves()));
+
+        uint256[4] memory quotedOut = hook.previewRemoveLiquidity(range, shares);
+        vm.prank(alice);
+        uint256[4] memory amountsOut = hook.removeLiquidity(range, shares, quotedOut, block.timestamp);
+        assertEq(hook.sharesOf(range, alice), 0);
+        for (uint256 i; i < 4; ++i) {
+            assertEq(amountsIn[i], quotedIn[i]);
+            assertEq(amountsOut[i], quotedOut[i]);
+            assertGt(amountsIn[i], 0);
+            assertLe(amountsOut[i], amountsIn[i]);
+            // Round-trip loss is bounded by per-asset rounding, not a material haircut.
+            assertLe(amountsIn[i] - amountsOut[i], 3);
+        }
+        _assertSolvent();
+        assertTrue(Torus4.isInvariant(hook.state(), hook.reserves()));
+    }
+
+    function testLiquidityGuards() public {
+        _fund(alice);
+        uint256 shares = hook.totalShares(0) / 100;
+        uint256[4] memory quotedIn = hook.previewAddLiquidity(0, shares);
+
+        uint256[4] memory tooLittle = quotedIn;
+        tooLittle[0] -= 1;
+        vm.prank(alice);
+        vm.expectRevert(OrbitalV4Hook.SlippageExceeded.selector);
+        hook.addLiquidity(0, shares, tooLittle, block.timestamp);
+
+        vm.prank(alice);
+        vm.expectRevert(OrbitalV4Hook.Expired.selector);
+        hook.addLiquidity(0, shares, quotedIn, block.timestamp - 1);
+
+        uint256[4] memory none;
+        vm.prank(alice);
+        vm.expectRevert(OrbitalV4Hook.InsufficientShares.selector);
+        hook.removeLiquidity(0, 1, none, block.timestamp);
+    }
+
+    function testLiquidityChangesReachTheSwapBook() public {
+        _fund(alice);
+        uint256 shares = hook.totalShares(2) / 10;
+        uint256[4] memory before = hook.reserves();
+        vm.prank(alice);
+        hook.addLiquidity(2, shares, hook.previewAddLiquidity(2, shares), block.timestamp);
+        uint256[4] memory afterAdd = hook.reserves();
+        for (uint256 i; i < 4; ++i) {
+            assertGt(afterAdd[i], before[i]);
+        }
+        _swapAndMeasure(0, 1, 1_000 * 10 ** decimals[0], "");
+        _assertSolvent();
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    function _deployTokens() private {
+        string[4] memory symbols = ["USDC", "USDT", "DAI", "FRAX"];
+        uint8[4] memory tokenDecimals = [uint8(6), 6, 18, 18];
+        MockERC20[4] memory tokens;
+        for (uint256 i; i < 4; ++i) {
+            tokens[i] = new MockERC20(symbols[i], symbols[i], tokenDecimals[i]);
+        }
+        // Insertion sort by address: v4 requires canonical currency order.
+        for (uint256 i = 1; i < 4; ++i) {
+            for (uint256 j = i; j > 0 && address(tokens[j - 1]) > address(tokens[j]); --j) {
+                (tokens[j - 1], tokens[j]) = (tokens[j], tokens[j - 1]);
+            }
+        }
+        for (uint256 i; i < 4; ++i) {
+            currencies[i] = Currency.wrap(address(tokens[i]));
+            decimals[i] = tokens[i].decimals();
+        }
+    }
+
+    function _ticks() private pure returns (SegmentedTorus4.Tick[] memory ticks) {
+        ticks = new SegmentedTorus4.Tick[](3);
+        ticks[0] = SegmentedTorus4.Tick({radius: RADIUS, k: RADIUS * 1001 / 1000, isInterior: true});
+        ticks[1] = SegmentedTorus4.Tick({radius: RADIUS, k: RADIUS * 1004 / 1000, isInterior: true});
+        ticks[2] = SegmentedTorus4.Tick({radius: RADIUS, k: RADIUS * 1050 / 1000, isInterior: true});
+    }
+
+    function _deployHook(address owner) private returns (OrbitalV4Hook deployed) {
+        uint256 q = RADIUS * 3 / 2;
+        uint256[4] memory reserves = [q, q, q, q];
+        bytes memory args = abi.encode(manager, currencies, decimals, reserves, _ticks(), FEE, TICK_SPACING, owner);
+        bytes memory initCode = abi.encodePacked(type(OrbitalV4Hook).creationCode, args);
+        bytes32 salt = HookAddressMiner.find(address(this), keccak256(initCode), FLAGS, 200_000);
+        deployed =
+            new OrbitalV4Hook{salt: salt}(manager, currencies, decimals, reserves, _ticks(), FEE, TICK_SPACING, owner);
+    }
+
+    function _initializePools(OrbitalV4Hook target) private {
+        for (uint8 a; a < 4; ++a) {
+            for (uint8 b = a + 1; b < 4; ++b) {
+                manager.initialize(_key(target, a, b), SQRT_PRICE_1_1);
+            }
+        }
+    }
+
+    function _fund(address account) private {
+        for (uint256 i; i < 4; ++i) {
+            MockERC20 token = MockERC20(Currency.unwrap(currencies[i]));
+            token.mint(account, 100_000_000 * 10 ** decimals[i]);
+            vm.startPrank(account);
+            token.approve(address(hook), type(uint256).max);
+            token.approve(address(swapRouter), type(uint256).max);
+            vm.stopPrank();
+        }
+    }
+
+    function _key(OrbitalV4Hook target, uint8 a, uint8 b) private view returns (PoolKey memory) {
+        (uint8 low, uint8 high) = a < b ? (a, b) : (b, a);
         return PoolKey({
-            currency0: currency0,
-            currency1: currency1,
+            currency0: currencies[low],
+            currency1: currencies[high],
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(target))
         });
     }
 
-    function _executeIndexed(uint8 input, uint8 output, uint256 amountIn) private returns (uint256, uint256) {
-        Currency[4] memory currencies = [USDC, USDT, DAI, FRAX];
+    function _swapOn(OrbitalV4Hook target, uint8 input, uint8 output, uint256 amountIn, bytes memory hookData) private {
         bool zeroForOne = input < output;
-        Currency currency0 = zeroForOne ? currencies[input] : currencies[output];
-        Currency currency1 = zeroForOne ? currencies[output] : currencies[input];
-        return fixture.executeExactIn(hook, _key(currency0, currency1), _exactIn(zeroForOne, amountIn));
+        swapRouter.swap(
+            _key(target, input, output),
+            SwapParams({
+                zeroForOne: zeroForOne,
+                // Test amounts are far below int256.max.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                amountSpecified: -int256(amountIn),
+                sqrtPriceLimitX96: zeroForOne ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            hookData
+        );
     }
 
-    function _ticks() private pure returns (SegmentedTorus4.Tick[] memory ticks) {
-        ticks = new SegmentedTorus4.Tick[](2);
-        ticks[0] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 110 * WAD, isInterior: true});
-        ticks[1] = SegmentedTorus4.Tick({radius: 100 * WAD, k: 130 * WAD, isInterior: true});
+    function _swapAndMeasure(uint8 input, uint8 output, uint256 amountIn, bytes memory hookData)
+        private
+        returns (uint256 paid, uint256 received)
+    {
+        MockERC20 tokenIn = MockERC20(Currency.unwrap(currencies[input]));
+        MockERC20 tokenOut = MockERC20(Currency.unwrap(currencies[output]));
+        uint256 inBefore = tokenIn.balanceOf(address(this));
+        uint256 outBefore = tokenOut.balanceOf(address(this));
+        _swapOn(hook, input, output, amountIn, hookData);
+        paid = inBefore - tokenIn.balanceOf(address(this));
+        received = tokenOut.balanceOf(address(this)) - outBefore;
     }
 
-    function _applyBitmap(SegmentedTorus4.Tick[] memory ticks, uint256 bitmap) private pure {
-        for (uint256 i; i < ticks.length; ++i) {
-            ticks[i].isInterior = bitmap & (uint256(1) << i) != 0;
+    function _expectHookRevert(address target, bytes4 callback, bytes memory reason) private {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                target,
+                callback,
+                reason,
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+    }
+
+    function _assertSolvent() private view {
+        (uint256[4] memory custody, uint256[4] memory required) = hook.solvency();
+        for (uint256 i; i < 4; ++i) {
+            assertGe(custody[i], required[i]);
+            assertEq(custody[i], manager.balanceOf(address(hook), currencies[i].toId()));
         }
     }
 
-    function _exactIn(bool zeroForOne, uint256 amountIn) private pure returns (SwapParams memory) {
-        // Test inputs are WAD-scale values, all strictly below int256.max.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(amountIn), sqrtPriceLimitX96: 0});
+    function _indexOf(string memory symbol) private view returns (uint8) {
+        for (uint8 i; i < 4; ++i) {
+            if (keccak256(bytes(MockERC20(Currency.unwrap(currencies[i])).symbol())) == keccak256(bytes(symbol))) {
+                return i;
+            }
+        }
+        revert("unknown symbol");
     }
 
-    function _expect(bytes memory callData, bytes4 selector) private {
-        (bool success, bytes memory result) = address(fixture).call(callData);
-        assert(!success && result.length >= 4);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assert(bytes4(result) == selector);
+    function _scale(uint256 index) private view returns (uint256) {
+        return 10 ** (18 - decimals[index]);
     }
 }

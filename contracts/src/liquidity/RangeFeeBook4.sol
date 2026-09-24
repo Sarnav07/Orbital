@@ -3,11 +3,12 @@ pragma solidity 0.8.30;
 
 import {FixedPointMath} from "../math/FixedPointMath.sol";
 
-/// @notice Per-range, per-share fee checkpoints with explicit allocation and rounding dust.
-/// @dev Controller calls model the hook's future segment settlement path; this contract moves no ERC-20 tokens.
+/// @notice Per-range LP share ledger with per-share fee checkpoints and explicit rounding dust.
+/// @dev The controller (the Orbital hook) mints/burns shares and pays collected fees from
+///      its own custody; this contract moves no ERC-20 tokens. Growth is Q128 per share so
+///      six-decimal raw fees stay claimable against WAD-scale share supplies.
 contract RangeFeeBook4 {
-    using FixedPointMath for uint256;
-    uint256 internal constant WAD = 1e18;
+    uint256 internal constant Q128 = 1 << 128;
 
     address public immutable controller;
     mapping(uint256 => uint256) public totalShares;
@@ -62,8 +63,8 @@ contract RangeFeeBook4 {
             if (supply == 0) revert InvalidWeights();
             for (uint256 asset; asset < 4; ++asset) {
                 uint256 allocated = FixedPointMath.mulDivDown(fees[asset], weights[i], totalWeight);
-                uint256 growthDelta = allocated.divWadDown(supply);
-                uint256 credited = growthDelta.mulWadDown(supply);
+                uint256 growthDelta = FixedPointMath.mulDivDown(allocated, Q128, supply);
+                uint256 credited = FixedPointMath.mulDivDown(growthDelta, supply, Q128);
                 _growth[rangeIds[i]][asset] += growthDelta;
                 _dust[rangeIds[i]][asset] += allocated - credited;
             }
@@ -78,11 +79,13 @@ contract RangeFeeBook4 {
         }
     }
 
-    function collect(uint256 rangeId) external returns (uint256[4] memory amounts) {
-        _checkpoint(rangeId, msg.sender);
-        amounts = _claimable[rangeId][msg.sender];
-        delete _claimable[rangeId][msg.sender];
-        _setDebt(rangeId, msg.sender);
+    /// @notice Clears and returns an owner's checkpointed claim for one range.
+    /// @dev Controller-only: the controller pays the returned amounts from custody.
+    function collect(uint256 rangeId, address owner) external onlyController returns (uint256[4] memory amounts) {
+        _checkpoint(rangeId, owner);
+        amounts = _claimable[rangeId][owner];
+        delete _claimable[rangeId][owner];
+        _setDebt(rangeId, owner);
     }
 
     function growth(uint256 rangeId) external view returns (uint256[4] memory) {
@@ -95,14 +98,15 @@ contract RangeFeeBook4 {
 
     function _checkpoint(uint256 rangeId, address owner) private {
         for (uint256 asset; asset < 4; ++asset) {
-            uint256 accrued = sharesOf[rangeId][owner].mulWadDown(_growth[rangeId][asset]);
+            uint256 accrued = FixedPointMath.mulDivDown(sharesOf[rangeId][owner], _growth[rangeId][asset], Q128);
             _claimable[rangeId][owner][asset] += accrued - _debt[rangeId][owner][asset];
         }
     }
 
     function _setDebt(uint256 rangeId, address owner) private {
         for (uint256 asset; asset < 4; ++asset) {
-            _debt[rangeId][owner][asset] = sharesOf[rangeId][owner].mulWadDown(_growth[rangeId][asset]);
+            _debt[rangeId][owner][asset] =
+                FixedPointMath.mulDivDown(sharesOf[rangeId][owner], _growth[rangeId][asset], Q128);
         }
     }
 }

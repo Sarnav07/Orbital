@@ -130,8 +130,8 @@ contract RangeLiquidity4Test {
         book.bootstrap(2, address(0xBEEF), secondInventory, 100 * WAD);
 
         uint256[4] memory deposit = [uint256(5 * WAD), 10 * WAD, 15 * WAD, 20 * WAD];
-        assert(book.addProportional(1, deposit) == 50 * WAD);
-        uint256[4] memory withdrawn = book.removeProportional(1, 25 * WAD);
+        assert(book.addProportional(1, address(this), deposit) == 50 * WAD);
+        uint256[4] memory withdrawn = book.removeProportional(1, address(this), 25 * WAD);
         RangeLiquidity4.ShareState memory second = book.position(2);
 
         assert(book.sharesOf(1, address(this)) == 125 * WAD);
@@ -140,6 +140,20 @@ contract RangeLiquidity4Test {
         for (uint256 asset; asset < 4; ++asset) {
             assert(second.realInventory[asset] == secondInventory[asset]);
         }
+    }
+
+    function testShareBookMutationsAreControllerOnly() public {
+        RangeShareBook4 book = new RangeShareBook4(address(0xC0DE));
+        uint256[4] memory deposit = [uint256(WAD), WAD, WAD, WAD];
+        (bool added, bytes memory addResult) =
+            address(book).call(abi.encodeCall(book.addProportional, (1, address(this), deposit)));
+        (bool removed, bytes memory removeResult) =
+            address(book).call(abi.encodeCall(book.removeProportional, (1, address(this), WAD)));
+        assert(!added && !removed);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assert(bytes4(addResult) == RangeShareBook4.OnlyController.selector);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assert(bytes4(removeResult) == RangeShareBook4.OnlyController.selector);
     }
 
     function _interiorState()
