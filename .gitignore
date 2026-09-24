@@ -14,3 +14,5 @@ contracts/out/
 contracts/cache/
 contracts/broadcast/
 cache/
+contracts/deployments/anvil*.json
+contracts/deployments/31337*.json

@@ -18,15 +18,14 @@ import {OrbitalV4Hook} from "../src/OrbitalV4Hook.sol";
 import {SegmentedTorus4} from "../src/math/SegmentedTorus4.sol";
 import {Torus4} from "../src/math/Torus4.sol";
 import {HookAddressMiner} from "../src/deploy/HookAddressMiner.sol";
+import {OrbitalDemoConfig} from "../script/OrbitalDeployBase.sol";
 
 /// @notice End-to-end tests through a real v4 PoolManager and the v4-core test routers.
 contract OrbitalV4HookTest is Test {
     uint256 private constant WAD = 1e18;
-    uint24 private constant FEE = 500;
-    int24 private constant TICK_SPACING = 60;
-    uint256 private constant RADIUS = 10_000_000 * WAD;
-    uint160 private constant FLAGS = Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
-        | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG;
+    uint24 private constant FEE = OrbitalDemoConfig.FEE;
+    int24 private constant TICK_SPACING = OrbitalDemoConfig.TICK_SPACING;
+    uint160 private constant FLAGS = OrbitalDemoConfig.FLAGS;
 
     uint160 private constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
     uint160 private constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
@@ -319,21 +318,14 @@ contract OrbitalV4HookTest is Test {
         }
     }
 
-    function _ticks() private pure returns (SegmentedTorus4.Tick[] memory ticks) {
-        ticks = new SegmentedTorus4.Tick[](3);
-        ticks[0] = SegmentedTorus4.Tick({radius: RADIUS, k: RADIUS * 1001 / 1000, isInterior: true});
-        ticks[1] = SegmentedTorus4.Tick({radius: RADIUS, k: RADIUS * 1004 / 1000, isInterior: true});
-        ticks[2] = SegmentedTorus4.Tick({radius: RADIUS, k: RADIUS * 1050 / 1000, isInterior: true});
-    }
-
     function _deployHook(address owner) private returns (OrbitalV4Hook deployed) {
-        uint256 q = RADIUS * 3 / 2;
-        uint256[4] memory reserves = [q, q, q, q];
-        bytes memory args = abi.encode(manager, currencies, decimals, reserves, _ticks(), FEE, TICK_SPACING, owner);
+        uint256[4] memory reserves = OrbitalDemoConfig.reserves();
+        SegmentedTorus4.Tick[] memory ticks = OrbitalDemoConfig.ticks();
+        bytes memory args = abi.encode(manager, currencies, decimals, reserves, ticks, FEE, TICK_SPACING, owner);
         bytes memory initCode = abi.encodePacked(type(OrbitalV4Hook).creationCode, args);
         bytes32 salt = HookAddressMiner.find(address(this), keccak256(initCode), FLAGS, 200_000);
         deployed =
-            new OrbitalV4Hook{salt: salt}(manager, currencies, decimals, reserves, _ticks(), FEE, TICK_SPACING, owner);
+            new OrbitalV4Hook{salt: salt}(manager, currencies, decimals, reserves, ticks, FEE, TICK_SPACING, owner);
     }
 
     function _initializePools(OrbitalV4Hook target) private {
