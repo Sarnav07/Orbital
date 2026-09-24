@@ -31,7 +31,7 @@ contract SegmentedTorus4Test {
         assert(result.interiorBitmap == 2);
         assert(result.state.rInterior == 100 * WAD);
         assert(result.state.kBoundary == 110 * WAD);
-        assertApproxEqAbs(result.amountOut, 40_123_552_802_932_248_591, 1_000_000_000);
+        assert(result.amountOut == 40_123_552_802_932_248_591);
         assert(Torus4.isInvariant(result.state, result.reserves));
     }
 

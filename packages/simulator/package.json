@@ -2,5 +2,8 @@
   "name": "@orbital/simulator",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test" }
+  "scripts": {
+    "test": "node --test",
+    "vectors": "node scripts/generate-vectors.mjs"
+  }
 }
