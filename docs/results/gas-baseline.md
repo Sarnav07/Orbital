@@ -10,6 +10,6 @@ Measured locally with Foundry v1.7.1, Solidity 0.8.30 (hook) / 0.8.26 (PoolManag
 | Add 1% of a range's shares | 332,331 | 1,500,000 |
 | Remove 1% of a range's shares | 178,046 | 1,500,000 |
 
-A local anvil broadcast of `DeployOrbitalDemo` followed by a `cast send` 1,000 USDT → USDC swap used 1,232,869 gas.
+On-chain checks agree. After a local anvil broadcast of `DeployOrbitalDemo`, a 1,000 USDT → USDC `cast send` swap used 1,232,869 gas. On Unichain Sepolia, a live 1,000 USDC → DAI swap with `minAmountOut`/deadline hook data used 1,232,232 gas (tx `0x23e33f62…19e46`).
 
 Cost grows with crossings because each boundary is found by a bounded scan-and-bisect solver (48 samples, 96 iterations) and the book is re-aggregated. A swap may cross at most 8 boundaries. These are prototype measurements, not optimized production costs.

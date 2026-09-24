@@ -26,7 +26,7 @@ Show the app hero. Say: "Four stablecoins create six pair pools. The usual desig
 
 ### 0:20–0:55: a real swap through the hook
 
-Show a testnet (or local anvil) swap transaction on the explorer, then `hook.reserves()` before and after. Say: "This USDC→DAI swap went through the real v4 PoolManager. The hook converted six-decimal USDC to the shared WAD book, charged 0.05%, minted the input as manager claims and burned DAI claims to pay out. Only the USDC and DAI coordinates of the one shared book moved."
+Open the [live Unichain Sepolia swap](https://unichain-sepolia.blockscout.com/tx/0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46) on Blockscout, or run a fresh one, then show `hook.reserves()` before and after. Say: "This USDC→DAI swap went through the real v4 PoolManager. The hook converted six-decimal USDC to the shared WAD book, charged 0.05%, minted the input as manager claims and burned DAI claims to pay out. Only the USDC and DAI coordinates of the one shared book moved."
 
 ### 0:55–1:35: sandbox and tick crossing
 

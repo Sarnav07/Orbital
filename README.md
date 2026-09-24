@@ -7,7 +7,7 @@ Orbital is an experimental Uniswap v4 hook that applies bounded Orbital sphere a
 The project explores what concentrated multi-asset liquidity can look like when a pairwise swap is priced against one basket. It is not a production exchange, a deployed protocol, or a guarantee of stablecoin safety.
 
 > [!WARNING]
-> **Prototype only.** This repository is experimental, unaudited, and intended for mock/test environments. Swaps and range liquidity settle through a real Uniswap v4 PoolManager in tests and local deployments, but no verified public deployment is claimed until one is recorded below. Do not use it with real funds.
+> **Prototype only.** This repository is experimental, unaudited, and intended for mock/test environments. Swaps and range liquidity settle through the real Uniswap v4 PoolManager, including the [Unichain Sepolia deployment](#deployment-unichain-sepolia-chain-1301) of mock tokens recorded below. Do not use it with real funds.
 
 ## The idea
 
@@ -187,11 +187,31 @@ forge script script/DeployOrbitalDemo.s.sol --rpc-url http://127.0.0.1:8545 --br
 
 With `POOL_MANAGER` set to zero, the script deploys a fresh PoolManager. It then deploys four mock tokens (public `mint`), mines and deploys the hook through the CREATE2 factory, deploys a `PoolSwapTest` router, initializes all six pools, and seeds the three ranges. On a local run, a 1,000 USDT → USDC swap sent with `cast` returned 999.433404 USDC for 1,232,869 gas.
 
+## Deployment: Unichain Sepolia (chain 1301)
+
+Deployed on 2026-09-24 from commit `16c86048b72025681748d5f95960b6727d0f51e3` with `DeployOrbitalDemo.s.sol`. The broadcast started at block 63,408,440 (25 transactions). The full address list is in [`contracts/deployments/unichain-sepolia.json`](contracts/deployments/unichain-sepolia.json). Every contract has published source: the hook and fee book on Blockscout, and the router and mock tokens on [Sourcify](https://sourcify.dev) (exact match).
+
+| Contract | Address |
+| --- | --- |
+| OrbitalV4Hook (verified) | [`0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888`](https://unichain-sepolia.blockscout.com/address/0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888) |
+| RangeFeeBook4 (verified) | [`0xcd548fB545745cBF0beE4454f3c996b649ac38Be`](https://unichain-sepolia.blockscout.com/address/0xcd548fB545745cBF0beE4454f3c996b649ac38Be) |
+| Demo router (v4-core `PoolSwapTest`, verified) | [`0x9EA2eB21BcF6178f1982d94181f6bc88A614dA42`](https://unichain-sepolia.blockscout.com/address/0x9EA2eB21BcF6178f1982d94181f6bc88A614dA42) |
+| Uniswap v4 PoolManager (official) | [`0x00B036B58a818B1BC34d502D3fE730Db729e62AC`](https://unichain-sepolia.blockscout.com/address/0x00B036B58a818B1BC34d502D3fE730Db729e62AC) |
+| Mock basket (address order, decimals, verified) | [USDT (6)](https://unichain-sepolia.blockscout.com/address/0x4eBEa178D6a3F18C166cb8C5b67BA73dBCD26b4A) · [FRAX (18)](https://unichain-sepolia.blockscout.com/address/0x68400C108461BD3D6F2124D6B81127D5f2c1EF65) · [DAI (18)](https://unichain-sepolia.blockscout.com/address/0xD3c22D959fE356a4C0AA6B2e3A8B2C6cf04F2Aae) · [USDC (6)](https://unichain-sepolia.blockscout.com/address/0xFc82C77256e74289f1B70f14126d21550C495a33) |
+
+The hook address ends in `0x…2888`, which encodes `beforeInitialize`, `beforeAddLiquidity`, `beforeSwap` and `beforeSwapReturnDelta`. Constructor inputs are the sorted basket and decimals above, reserves of 15,000,000 WAD per asset, three 10M-WAD ranges at k/r 1.001 / 1.004 / 1.05, fee 500, tick spacing 60, and owner `0x54560095593B57Ad71572336037435Ff1E50E4EA`.
+
+| Evidence | Transaction |
+| --- | --- |
+| Hook deployment (CREATE2 factory, 5,390,644 gas) | [`0xee3e34e9…eabe0`](https://unichain-sepolia.blockscout.com/tx/0xee3e34e9d7e3934b1536a2067b9b0a8d3bcf52ee214be9f8322dda226bbeabe0) |
+| Range seeding (3.59M of each asset as PoolManager claims) | [`0x07fd74b7…e7220`](https://unichain-sepolia.blockscout.com/tx/0x07fd74b7193d74422cab2beaa5bcd42afdd7b0a344af56015deb33656b2e7220) |
+| Live swap: 1,000 USDC → 999.4334 DAI, 0.5 USDC fee, `minAmountOut` + deadline hook data (1,232,232 gas) | [`0x23e33f62…19e46`](https://unichain-sepolia.blockscout.com/tx/0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46) |
+
+These values were read back from the chain after the swap. `seeded()` is true. `reserves()` moved only the USDC and DAI coordinates. `solvency()` shows held claims equal to or above the requirement for every asset, and `feeLiability()` shows 0.5 USDC. Anyone can reproduce a swap: the mock tokens have a public `mint(address,uint256)`. Approve the router, then call `swap` with a canonical key (fee 500, tick spacing 60, this hook).
+
 ## Deployment posture
 
-Unichain Sepolia (chain 1301) is the target network. Its official v4 PoolManager is `0x00b036b58a818b1bc34d502d3fe730db729e62ac`. Copy `.env.example` to `.env`, add a funded testnet key, then run the demo script with `--rpc-url $RPC_URL --broadcast`. Add `--verify` with the Unichain Sepolia explorer's verifier settings to publish source.
-
-**No testnet deployment is recorded yet.** A deployment should not be described as live until this section lists the chain, transaction hashes, source commit, constructor inputs, deployed addresses (`contracts/deployments/unichain-sepolia.json`) and independently refreshed hook reads.
+Unichain Sepolia is a testnet deployment of mock tokens for demonstration only. It is not a production launch, and the contracts are unaudited. To redeploy, copy `.env.example` to `.env`, add a funded testnet key, and run the demo script from `contracts/` with `--rpc-url $RPC_URL --broadcast`. Add `--verify` with the explorer's verifier settings to publish source.
 
 ## References and attribution
 

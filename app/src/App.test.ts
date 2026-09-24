@@ -56,3 +56,14 @@ describe("Orbital documentation story", () => {
     expect(copy).not.toMatch(/154×|154x|guaranteed|zero slippage/i);
   });
 });
+
+describe("Unichain Sepolia deployment panel", () => {
+  it("links the recorded hook, router and live swap to the block explorer", async () => {
+    const { liveDeployment } = await import("./App");
+    expect(liveDeployment.chainId).toBe(1301);
+    expect(liveDeployment.hook.href).toBe(`https://unichain-sepolia.blockscout.com/address/${liveDeployment.hook.address}`);
+    expect(liveDeployment.hook.address.toLowerCase().endsWith("2888")).toBe(true);
+    expect(liveDeployment.tokens.map((token) => token.symbol).sort()).toEqual(["DAI", "FRAX", "USDC", "USDT"]);
+    expect(liveDeployment.swapTx.href).toMatch(/\/tx\/0x[0-9a-f]{64}$/);
+  });
+});

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AnimatePresence,
   motion,
@@ -10,6 +10,7 @@ import {
 } from "motion/react";
 import { replay } from "../../packages/simulator/src/replay.js";
 import fixture from "../../packages/fixtures/segmented-wad-v1.json";
+import deployment from "../../contracts/deployments/unichain-sepolia.json";
 import {
   commitPreview,
   createSandboxState,
@@ -68,6 +69,31 @@ export const chapters = [
   ["05 / 06", "Show the boundary", "Crossing ticks is explicit state, not a hidden edge case. The committed WAD fixture records trap and recovery transitions for offline replay.", "VERSIONED TRACE"],
   ["06 / 06", "Settle at the hook", "The hook takes each exact-input route as PoolManager claims, pays the output from the shared book, and returns the v4 custom delta. Ranges enter and exit through the hook, never native v4 positions.", "BEFORESWAP DELTA"],
 ] as const;
+
+const EXPLORER = "https://unichain-sepolia.blockscout.com";
+const explorerAddress = (address: string) => ({ address, href: `${EXPLORER}/address/${address}` });
+const LIVE_SWAP_TX = "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46";
+
+/** The recorded Unichain Sepolia deployment (contracts/deployments/unichain-sepolia.json). */
+export const liveDeployment = {
+  chainId: deployment.chainId,
+  hook: explorerAddress(deployment.hook),
+  router: explorerAddress(deployment.router),
+  poolManager: explorerAddress(deployment.poolManager),
+  tokens: deployment.currencies.map((address, index) => ({ symbol: deployment.symbols[index], decimals: deployment.decimals[index], ...explorerAddress(address) })),
+  swapTx: { hash: LIVE_SWAP_TX, href: `${EXPLORER}/tx/${LIVE_SWAP_TX}` },
+};
+
+const shortHex = (value: string) => `${value.slice(0, 6)}…${value.slice(-4)}`;
+
+function LiveDeployment() {
+  return <section className="live-deployment" aria-labelledby="live-deployment-title"><div><p className="section-index">UNICHAIN SEPOLIA · CHAIN {liveDeployment.chainId}</p><h3 id="live-deployment-title">The hook is live on testnet.</h3><p>Mock basket, unaudited prototype. The sandbox above uses the same ranges and fee as this deployment.</p><a className="button button-light" href={liveDeployment.swapTx.href} target="_blank" rel="noreferrer">View a live swap ↗</a></div><dl>
+    <dt>OrbitalV4Hook</dt><dd><a href={liveDeployment.hook.href} target="_blank" rel="noreferrer">{shortHex(liveDeployment.hook.address)}</a></dd>
+    <dt>Swap router</dt><dd><a href={liveDeployment.router.href} target="_blank" rel="noreferrer">{shortHex(liveDeployment.router.address)}</a></dd>
+    <dt>PoolManager</dt><dd><a href={liveDeployment.poolManager.href} target="_blank" rel="noreferrer">{shortHex(liveDeployment.poolManager.address)}</a></dd>
+    {liveDeployment.tokens.map((token) => <Fragment key={token.symbol}><dt>{token.symbol} · {token.decimals}d</dt><dd><a href={token.href} target="_blank" rel="noreferrer">{shortHex(token.address)}</a></dd></Fragment>)}
+  </dl></section>;
+}
 
 export const heroTitle = "One reserve book for four stablecoins.";
 
@@ -416,7 +442,8 @@ function SandboxTeaser({ navigate }: { navigate: Navigate }) {
 function LaunchApp({ navigate }: { navigate: Navigate }) {
   return <main className="launch-app"><header className="launch-nav"><button className="launch-brand" type="button" onClick={() => navigate("home")}><OrbitalMark /><span>orbital</span></button><nav><button type="button" onClick={() => navigate("home")}>Protocol</button><button type="button" onClick={() => navigate("docs")}>Docs</button></nav><span className="sandbox-status"><i /> Sandbox active</span></header>
     <LaunchSimulator />
-    <footer className="launch-footer"><span>Local model of the demo hook · no wallet connection</span><button type="button" onClick={() => navigate("home")}>Back to landing ↑</button></footer></main>;
+    <LiveDeployment />
+    <footer className="launch-footer"><span>Local model of the Unichain Sepolia hook · no wallet connection</span><button type="button" onClick={() => navigate("home")}>Back to landing ↑</button></footer></main>;
 }
 
 function FooterCta({ navigate }: { navigate: Navigate }) {
@@ -453,7 +480,7 @@ function Docs() {
   const ref = useRef<HTMLElement>(null); const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const progress = useSpring(scrollYProgress, { stiffness: 105, damping: 28, restDelta: .0001 });
-  return <main className={reduced ? "docs reduced" : "docs"}><section className="docs-hero"><p className="eyebrow"><b /> PROTOCOL DOCUMENTATION</p><h1>Liquidity is a<br /><em>shared surface.</em></h1><p>Orbital’s prototype explains itself through the reserve state it actually implements. Scroll through the routing, geometry, range, and settlement boundaries.</p><a className="underlink" href="#story">Begin the story ↓</a></section><section ref={ref} className="scroll-story" id="story"><div className="story-sticky"><StoryStage progress={progress} />{chapters.map((chapter, index) => <StoryCaption key={chapter[0]} chapter={chapter} progress={progress} index={index} />)}</div></section><section className="docs-close"><p className="section-index">REFERENCE</p><h2>Read the precise <em>implementation boundary.</em></h2><p>The visual story is an introduction, not a substitute for the specification. No verified public deployment is claimed here; the hook settles through a real PoolManager in tests and local deployments.</p><a className="button button-light" href="https://github.com/Sarnav07/Orbital/blob/main/docs/SPECIFICATION.md" target="_blank" rel="noreferrer">Open specification ↗</a></section></main>;
+  return <main className={reduced ? "docs reduced" : "docs"}><section className="docs-hero"><p className="eyebrow"><b /> PROTOCOL DOCUMENTATION</p><h1>Liquidity is a<br /><em>shared surface.</em></h1><p>Orbital’s prototype explains itself through the reserve state it actually implements. Scroll through the routing, geometry, range, and settlement boundaries.</p><a className="underlink" href="#story">Begin the story ↓</a></section><section ref={ref} className="scroll-story" id="story"><div className="story-sticky"><StoryStage progress={progress} />{chapters.map((chapter, index) => <StoryCaption key={chapter[0]} chapter={chapter} progress={progress} index={index} />)}</div></section><section className="docs-close"><p className="section-index">REFERENCE</p><h2>Read the precise <em>implementation boundary.</em></h2><p>The visual story is an introduction, not a substitute for the specification. The hook settles through the real v4 PoolManager and is deployed with mock tokens on Unichain Sepolia; the specification states every limit.</p><a className="button button-light" href="https://github.com/Sarnav07/Orbital/blob/main/docs/SPECIFICATION.md" target="_blank" rel="noreferrer">Open specification ↗</a></section></main>;
 }
 
 export function App() {

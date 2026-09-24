@@ -1,0 +1,27 @@
+{
+  "chainId": 1301,
+  "currencies": [
+    "0x4eBEa178D6a3F18C166cb8C5b67BA73dBCD26b4A",
+    "0x68400C108461BD3D6F2124D6B81127D5f2c1EF65",
+    "0xD3c22D959fE356a4C0AA6B2e3A8B2C6cf04F2Aae",
+    "0xFc82C77256e74289f1B70f14126d21550C495a33"
+  ],
+  "decimals": [
+    6,
+    18,
+    18,
+    6
+  ],
+  "fee": 500,
+  "feeBook": "0xcd548fB545745cBF0beE4454f3c996b649ac38Be",
+  "hook": "0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888",
+  "poolManager": "0x00B036B58a818B1BC34d502D3fE730Db729e62AC",
+  "router": "0x9EA2eB21BcF6178f1982d94181f6bc88A614dA42",
+  "symbols": [
+    "USDT",
+    "FRAX",
+    "DAI",
+    "USDC"
+  ],
+  "tickSpacing": 60
+}

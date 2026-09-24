@@ -29,13 +29,20 @@ Required local tooling is Foundry `v1.7.1`, Python `3.14.6`, Node.js, Git, and M
 | LP accounting | Range-share and fee-book tests cover proportional claims, independent range inventory, dust, and unauthorized-withdrawal boundaries. |
 | BigInt replay | The simulator recomputes every recorded transition and rejects any amount or bitmap it cannot reproduce. Solidity and JavaScript assert the same vector file exactly. |
 
-The regression command currently runs 65 Solidity tests (including 2 invariant campaigns), 31 independent Python-reference tests, 11 simulator tests and 19 app tests, plus the app typecheck and production build. [Gas measurements](results/gas-baseline.md) are full swaps through a real PoolManager and router.
+The regression command currently runs 65 Solidity tests (including 2 invariant campaigns), 31 independent Python-reference tests, 11 simulator tests and 20 app tests, plus the app typecheck and production build. [Gas measurements](results/gas-baseline.md) are full swaps through a real PoolManager and router.
 
 ## Deployment provenance
 
 The end-to-end recipe is [`DeployOrbitalDemo.s.sol`](../contracts/script/DeployOrbitalDemo.s.sol); [`DeployOrbitalHook.s.sol`](../contracts/script/DeployOrbitalHook.s.sol) deploys only the hook against existing tokens. Both mine the v4 permission-address salt against the CREATE2 factory that performs the deployment, sort tokens canonically and read their decimals. Secrets come only from environment variables.
 
-No deployment transaction, contract address, or testnet claim is included in this revision. A future deployment record must include the chain, transaction hash, deployed addresses, source commit, constructor inputs, and independently refreshed hook reads before it is marked live.
+**Unichain Sepolia (chain 1301), 2026-09-24, source commit `16c86048b72025681748d5f95960b6727d0f51e3`:**
+
+- Hook `0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888` and fee book: source verified on Blockscout. The router and the four mock tokens are exact matches on Sourcify.
+- Fee book `0xcd548fB545745cBF0beE4454f3c996b649ac38Be`, demo router `0x9EA2eB21BcF6178f1982d94181f6bc88A614dA42`, official PoolManager `0x00B036B58a818B1BC34d502D3fE730Db729e62AC`.
+- Hook deployment tx `0xee3e34e9d7e3934b1536a2067b9b0a8d3bcf52ee214be9f8322dda226bbeabe0`; seeding tx `0x07fd74b7193d74422cab2beaa5bcd42afdd7b0a344af56015deb33656b2e7220`.
+- Live swap tx `0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46`: 1,000 USDC in, 999.4334 DAI out. The hook state was read back afterwards (`seeded`, `reserves`, `solvency`, `feeLiability`).
+
+Addresses, symbols and decimals are in [`contracts/deployments/unichain-sepolia.json`](../contracts/deployments/unichain-sepolia.json); the full transaction table is in the [README](../README.md#deployment-unichain-sepolia-chain-1301).
 
 ## Current limits
 
