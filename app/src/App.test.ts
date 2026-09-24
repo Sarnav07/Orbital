@@ -4,6 +4,7 @@ import {
   geometryCards,
   homePrinciples,
   problemCards,
+  displayWad,
   toAmount,
 } from "./App";
 
@@ -23,6 +24,11 @@ describe("Orbital documentation story", () => {
   it("formats WAD fixture values without floating point conversion", () => {
     expect(toAmount("200000000000000000000")).toBe("200.00");
     expect(toAmount("59870000000000000000")).toBe("59.87");
+  });
+
+  it("groups large sandbox amounts so 15M-scale reserves stay readable", () => {
+    expect(displayWad(15_000_999_500_000_000_000_000_000n)).toBe("15,000,999.5");
+    expect(displayWad(999_433_404_000_000_000_000n)).toBe("999.4334");
   });
 
   it("keeps the new homepage narrative grounded in the prototype", () => {

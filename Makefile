@@ -16,6 +16,7 @@ simulator-check:
 	cd packages/simulator && npm test
 
 app-check:
+	cd app && npm ci --no-audit --no-fund
 	cd app && npm test
 	cd app && npm run typecheck
 	cd app && npm run build

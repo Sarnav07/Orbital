@@ -10,6 +10,7 @@ export type Tick = { radius: bigint; k: bigint; isInterior: boolean };
 export type SandboxState = { reserves: bigint[]; ticks: Tick[] };
 export type QuotePreview = {
   amountIn: bigint;
+  fee: bigint;
   amountOut: bigint;
   reserves: bigint[];
   ticks: Tick[];
@@ -25,11 +26,17 @@ export type CurvePoint = {
 };
 export type PlanePoint = { x: number; y: number; magnitude: number };
 
-const INITIAL_RESERVES = [100n * WAD, 100n * WAD, 100n * WAD, 100n * WAD];
-const INITIAL_TICKS = [
-  { radius: 100n * WAD, k: 110n * WAD, isInterior: true },
-  { radius: 100n * WAD, k: 130n * WAD, isInterior: true },
-];
+/** Mirrors contracts/script/OrbitalDeployBase.sol (OrbitalDemoConfig). */
+export const POOL_FEE_PIPS = 500n;
+const FEE_DENOMINATOR = 1_000_000n;
+const RANGE_RADIUS = 10_000_000n * WAD;
+const EQUAL_PRICE_RESERVE = RANGE_RADIUS * 3n / 2n;
+const INITIAL_RESERVES = [EQUAL_PRICE_RESERVE, EQUAL_PRICE_RESERVE, EQUAL_PRICE_RESERVE, EQUAL_PRICE_RESERVE];
+const INITIAL_TICKS = [1001n, 1004n, 1050n].map((permille) => ({
+  radius: RANGE_RADIUS,
+  k: RANGE_RADIUS * permille / 1000n,
+  isInterior: true,
+}));
 
 export function createSandboxState(): SandboxState {
   return {
@@ -65,12 +72,19 @@ function ticksFromBitmap(ticks: Tick[], bitmap: bigint): Tick[] {
   }));
 }
 
+/** Input-token fee retained by the hook, rounded up exactly as on-chain. */
+export function swapFee(amountIn: bigint): bigint {
+  return (amountIn * POOL_FEE_PIPS + FEE_DENOMINATOR - 1n) / FEE_DENOMINATOR;
+}
+
 export function previewSwap(
   sandbox: SandboxState,
   input: number,
   output: number,
   amountIn: bigint,
 ): QuotePreview {
+  const fee = swapFee(amountIn);
+  if (amountIn <= fee) throw new Error("Enter an amount larger than the swap fee.");
   const state = aggregateTicks(sandbox.ticks);
   const result = quoteExactIn({
     state,
@@ -78,10 +92,11 @@ export function previewSwap(
     reserves: sandbox.reserves,
     input,
     output,
-    amountIn,
+    amountIn: amountIn - fee,
   });
   return {
     amountIn,
+    fee,
     amountOut: result.amountOut,
     reserves: result.reserves,
     ticks: ticksFromBitmap(sandbox.ticks, result.interiorBitmap),
@@ -132,7 +147,7 @@ export function sampleCurve(
   count = 24,
 ): CurvePoint[] {
   const points: CurvePoint[] = [];
-  const maxAmount = 100n * WAD;
+  const maxAmount = 2_000_000n * WAD;
   for (let index = 1; index <= count; index += 1) {
     const amountIn = maxAmount * BigInt(index) / BigInt(count);
     try {
@@ -149,6 +164,37 @@ export function sampleCurve(
     }
   }
   return points;
+}
+
+/**
+ * Largest whole-token input the current state can quote, by bisection. Beyond it
+ * the engine reaches an unsupported region (all ranges trapped) or the output
+ * reserve bound, so the sandbox would only show an error.
+ */
+export function maxQuotableInput(sandbox: SandboxState, input: number, output: number): bigint {
+  const quotes = (units: bigint) => {
+    try {
+      previewSwap(sandbox, input, output, units * WAD);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  let low = 0n;
+  let high = sandbox.reserves.reduce((sum, reserve) => sum + reserve, 0n) / WAD;
+  if (quotes(high)) return high * WAD;
+  while (high - low > 1n) {
+    const middle = (low + high) / 2n;
+    if (quotes(middle)) low = middle;
+    else high = middle;
+  }
+  return low * WAD;
+}
+
+/** Output per unit input for a live quote, or null before one exists. */
+export function effectiveRate(preview: QuotePreview | undefined, amountIn: bigint | undefined): number | null {
+  if (!preview || !amountIn) return null;
+  return Number(preview.amountOut * 1_000_000n / amountIn) / 1_000_000;
 }
 
 export function quoteMessage(error: unknown): string {

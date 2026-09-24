@@ -13,8 +13,10 @@ import fixture from "../../packages/fixtures/segmented-wad-v1.json";
 import {
   commitPreview,
   createSandboxState,
+  effectiveRate as rateFor,
   formatWad,
   interiorBitmap as bitmapForTicks,
+  maxQuotableInput,
   parseWad,
   previewSwap,
   projectReserveImbalance,
@@ -40,7 +42,7 @@ const principles = [
 
 export const problemCards = [
   ["01 / FRAGMENTATION", "4 COINS → 6 POOLS", "Fragmented", "N(N − 1) / 2 markets", "One basket, split across six order books.", "Pools are built two tokens at a time, so a four-coin basket needs six of them. The same deposits are divided across every combination, each pool ends up shallower than the last, and adding a fifth coin means standing up four more markets.", [["A", "A USDC/FRAX trade cannot touch USDC/USDT depth"], ["B", "Per-pool depth falls as the basket grows"], ["C", "Every new stablecoin needs its own set of markets"]]],
-  ["02 / DENSITY", "~1–2× A FLAT CURVE", "Flat", "x · y = k", "Depth spread across prices a dollar never reaches.", "Curve holds many stablecoins together, but lays liquidity flatly along the whole curve, most of it parked at prices that never trade. Uniswap v3 concentrates properly, then caps you at two tokens. Today you pick breadth or depth, never both.", [["A", "Curve: the whole basket, thin at the peg"], ["B", "Uniswap v3: dense at the peg, one pair only"], ["C", "Idle capital earns nothing and cushions nothing"]]],
+  ["02 / DENSITY", "STABLESWAP · V3 PAIRS", "Flat", "Σx ⟷ Πx", "Depth spread across prices a dollar never reaches.", "Curve's StableSwap holds many stablecoins together by blending constant-sum and constant-product pricing, but every LP shares one curve and cannot choose how tightly to concentrate. Uniswap v3 lets LPs choose a band, then caps them at two tokens. Today you pick breadth or depth, never both.", [["A", "Curve: the whole basket, thin at the peg"], ["B", "Uniswap v3: dense at the peg, one pair only"], ["C", "Idle capital earns nothing and cushions nothing"]]],
   ["03 / TAIL RISK", "USDC → $0.88 · MAR 2023", "Fragile", "pᵢ → 0  ⇒  x̄ → xᵢ", "One broken coin becomes the entire pool.", "A flat pool can keep quoting the failing asset near a dollar after the market has stopped. Arbitrage sells it in and takes the healthy coins out, until LPs hold little else. This is tail impermanent loss in an unbounded stablecoin pool.", [["A", "The pool prices the depeg last, not first"], ["B", "LPs absorb the fall with no bound of their own"], ["C", "USDC after SVB: flat pools took the loss"]]],
 ] as const;
 
@@ -64,12 +66,40 @@ export const chapters = [
   ["03 / 06", "A bounded surface", "The prototype composes four-asset sphere and torus geometry. The state remains bounded instead of falling back to v4’s native concentrated-liquidity curve.", "SPHERE4 + TORUS4"],
   ["04 / 06", "Ranges hold their own claims", "LPs choose a range around the peg. That range keeps attributed inventory, LP shares, and its virtual offset separate from its neighbours.", "RANGE ACCOUNTING"],
   ["05 / 06", "Show the boundary", "Crossing ticks is explicit state, not a hidden edge case. The committed WAD fixture records trap and recovery transitions for offline replay.", "VERSIONED TRACE"],
-  ["06 / 06", "Settle at the hook", "The adapter accepts canonical exact-input routes and returns the v4 custom delta. This remains a prototype: no public settlement interface or verified deployment is presented here.", "BEFORESWAP DELTA"],
+  ["06 / 06", "Settle at the hook", "The hook takes each exact-input route as PoolManager claims, pays the output from the shared book, and returns the v4 custom delta. Ranges enter and exit through the hook, never native v4 positions.", "BEFORESWAP DELTA"],
 ] as const;
 
-type Route = "home" | "docs" | "app";
+export const heroTitle = "One reserve book for four stablecoins.";
 
-function useRoute(): [Route, (route: Route) => void] {
+type Route = "home" | "docs" | "app";
+type Navigate = (route: Route, hash?: string) => void;
+
+const PRELOADER_KEY = "orbital:preloader-seen";
+
+/** True only on the first call in a browser session; storage failures skip the preloader. */
+export function shouldShowPreloader(storage: Pick<Storage, "getItem" | "setItem"> | null): boolean {
+  if (!storage) return false;
+  try {
+    if (storage.getItem(PRELOADER_KEY)) return false;
+    storage.setItem(PRELOADER_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const sessionStore = () => {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+};
+
+// Evaluated once per page load so StrictMode double renders cannot hide it.
+const firstVisit = typeof window !== "undefined" && shouldShowPreloader(sessionStore());
+
+function useRoute(): [Route, Navigate] {
   const getRoute = () => {
     const path = location.pathname.replace(/\/+$/, "");
     return path === "/docs" ? "docs" : path === "/app" ? "app" : "home";
@@ -80,11 +110,22 @@ function useRoute(): [Route, (route: Route) => void] {
     addEventListener("popstate", onPopState);
     return () => removeEventListener("popstate", onPopState);
   }, []);
-  const navigate = (next: Route) => {
+  const navigate: Navigate = (next, hash) => {
     const target = next === "docs" ? "/docs" : next === "app" ? "/app" : "/";
     if (location.pathname !== target) history.pushState({}, "", target);
     setRoute(next);
-    requestAnimationFrame(() => scrollTo({ top: 0, behavior: "instant" as ScrollBehavior }));
+    if (!hash) {
+      requestAnimationFrame(() => scrollTo({ top: 0, behavior: "instant" as ScrollBehavior }));
+      return;
+    }
+    // The target section mounts after the route transition; retry for a short while.
+    let attempts = 0;
+    const scrollToHash = () => {
+      const section = document.getElementById(hash);
+      if (section) section.scrollIntoView({ behavior: "smooth" });
+      else if (++attempts < 60) requestAnimationFrame(scrollToHash);
+    };
+    requestAnimationFrame(scrollToHash);
   };
   return [route, navigate];
 }
@@ -105,13 +146,13 @@ function Preloader({ done }: { done: () => void }) {
   </motion.div>;
 }
 
-function Nav({ route, navigate }: { route: Route; navigate: (route: Route) => void }) {
+function Nav({ route, navigate }: { route: Route; navigate: Navigate }) {
   const [open, setOpen] = useState(false);
   return <header className="nav-shell">
     <a className="brand" href="/" onClick={(event) => { event.preventDefault(); navigate("home"); }}><OrbitalMark /><span>orbital</span></a>
     <button className="menu-button" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>Menu</button>
     <nav className={open ? "nav-links is-open" : "nav-links"} aria-label="Primary navigation">
-      <a href="/#protocol" onClick={() => setOpen(false)}>protocol</a>
+      <a href="/#protocol" onClick={(event) => { if (route !== "home") { event.preventDefault(); navigate("home", "protocol"); } setOpen(false); }}>protocol</a>
       <a href="/app" onClick={(event) => { event.preventDefault(); navigate("app"); setOpen(false); }}>simulator</a>
       <a href="/docs" aria-current={route === "docs" ? "page" : undefined} onClick={(event) => { event.preventDefault(); navigate("docs"); setOpen(false); }}>docs</a>
       <a href="https://www.paradigm.xyz/writing/orbital" target="_blank" rel="noreferrer">paper ↗</a>
@@ -129,15 +170,15 @@ function HeroOrbital() {
   </motion.div>;
 }
 
-function Hero() {
+function Hero({ navigate }: { navigate: Navigate }) {
   return <section className="hero" id="top">
     <div className="hero-mesh" aria-hidden="true" />
     <HeroOrbital />
     <div className="hero-content">
       <p className="eyebrow"><b /> EXPERIMENTAL UNISWAP V4 HOOK <span>·</span> SHARED STABLECOIN LIQUIDITY</p>
-      <h1>One pool for every stablecoin.</h1>
+      <h1>{heroTitle}</h1>
       <p>Four assets. Six pair interfaces. One shared reserve book shaped by Orbital geometry.</p>
-      <div className="hero-actions"><a className="button button-solid" href="#protocol">Explore Protocol</a><a className="underlink" href="/docs">Read the story</a></div>
+      <div className="hero-actions"><a className="button button-solid" href="#protocol">Explore Protocol</a><a className="underlink" href="/docs" onClick={(event) => { event.preventDefault(); navigate("docs"); }}>Read the story</a></div>
     </div>
     <div className="scroll-cue"><span>scroll</span><i /></div>
   </section>;
@@ -194,7 +235,7 @@ function Principles() {
 const architecture = [
   ["01", "Pair interfaces", "Six canonical pair routes are presented to users. They are interfaces over a shared book, not separately funded pools.", ["USDC / USDT", "USDC / DAI", "USDT / FRAX"]],
   ["02", "Orbital hook", "The hook applies the bounded segmented geometry and returns custom swap accounting while advancing a single reserve state.", ["beforeSwap", "SegmentedTorus4", "BeforeSwapDelta"]],
-  ["03", "Settlement surface", "PoolManager remains the custody and settlement surface. Public settlement and verified deployment are explicitly outside this prototype.", ["unlock", "settle", "custody"]],
+  ["03", "Settlement surface", "The hook holds the basket as PoolManager ERC-6909 claims: it mints the input, burns the output, and the manager settles ERC-20 legs with the router.", ["mint claims", "burn claims", "settle"]],
 ] as const;
 
 function Architecture() {
@@ -225,17 +266,28 @@ function ReplayPanel() {
 }
 
 function SharedHookMap() {
-  return <section className="shared-hook" aria-labelledby="shared-hook-title"><div className="shared-hook-heading"><p className="section-index">/ 07 · Route map</p><h2 id="shared-hook-title">Six interfaces.<br /><em>One shared hook.</em></h2><p>Canonical pairs expose the same four-asset reserve state to the quote engine. This map describes the prototype accounting model, not a public settlement interface.</p></div><div className="hook-map" aria-label="Orbital shared hook architecture">
-    <div className="hook-map-users"><p className="hook-map-label">// WHO INTERACTS</p><div className="hook-user-grid"><article className="hook-user-card"><div><h3>Trader</h3><b>exact-input pair route</b></div><p>→ a canonical pair reaches <code>beforeSwap</code>, which returns the custom Orbital delta.</p></article><article className="hook-user-card"><div><h3>Liquidity provider</h3><b>range-local claim model</b></div><p>→ proportional basket and range-share accounting are modeled; custody integration remains out of scope.</p></article></div></div>
+  return <section className="shared-hook" aria-labelledby="shared-hook-title"><div className="shared-hook-heading"><p className="section-index">/ 07 · Route map</p><h2 id="shared-hook-title">Six interfaces.<br /><em>One shared hook.</em></h2><p>Canonical pairs expose the same four-asset reserve state to the quote engine. This map follows one swap through the hook and the real v4 PoolManager.</p></div><div className="hook-map" aria-label="Orbital shared hook architecture">
+    <div className="hook-map-users"><p className="hook-map-label">// WHO INTERACTS</p><div className="hook-user-grid"><article className="hook-user-card"><div><h3>Trader</h3><b>exact-input pair route</b></div><p>→ a canonical pair reaches <code>beforeSwap</code>, which returns the custom Orbital delta.</p></article><article className="hook-user-card"><div><h3>Liquidity provider</h3><b>range-local claim model</b></div><p>→ deposits and withdraws a range's current basket through the hook and collects that range's fees.</p></article></div></div>
     <p className="hook-map-arrow">TRADER QUOTES A PAIR · LP HOLDS A RANGE-LOCAL CLAIM ↓</p>
     <div className="hook-map-pairs"><p>6 CANONICAL PAIR INTERFACES</p>{["USDC / USDT", "USDC / DAI", "USDC / FRAX", "USDT / DAI", "USDT / FRAX", "DAI / FRAX"].map((pair) => <span key={pair}>{pair}</span>)}</div>
     <p className="hook-map-arrow">ALL READ AND ADVANCE ONE RESERVE STATE ↓</p>
-    <article className="hook-core"><div><p>ORBITAL V4 HOOK</p><h3>OrbitalV4Hook</h3></div><b>// SHARED FOUR-ASSET STATE</b><div className="hook-core-details"><span><strong>beforeSwap</strong>accepts a canonical exact-input route</span><span><strong>one reserve vector</strong>all six routes advance the same state</span><span><strong>range attribution</strong>claim math only; no token custody</span></div></article>
-    <p className="hook-map-arrow">RETURNS CUSTOM DELTA TO THE FIXTURE ↓</p>
-    <article className="hook-manager"><div><p>LOCAL MANAGER FIXTURE</p><h3>Accounting harness</h3></div><b>// CUSTOM-DELTA LEGS</b><span>Decodes the `BeforeSwapDelta` and records the input and output currency legs. It does not transfer ERC-20s, initialize pools, or emulate production PoolManager settlement.</span></article>
-    <div className="hook-runtime"><p>// ONE EXACT-INPUT QUOTE</p><div><span>canonical route</span><i>→</i><span>beforeSwap</span><i>→</i><span>SegmentedTorus4</span><i>→</i><span>BeforeSwapDelta</span><i>→</i><span>fixture records legs</span></div></div>
+    <article className="hook-core"><div><p>ORBITAL V4 HOOK</p><h3>OrbitalV4Hook</h3></div><b>// SHARED FOUR-ASSET STATE</b><div className="hook-core-details"><span><strong>beforeSwap</strong>accepts a canonical exact-input route</span><span><strong>one reserve vector</strong>all six routes advance the same state</span><span><strong>range liquidity</strong>shares, fees and inventory held as manager claims</span></div></article>
+    <p className="hook-map-arrow">RETURNS CUSTOM DELTA TO THE POOLMANAGER ↓</p>
+    <article className="hook-manager"><div><p>UNISWAP V4 POOLMANAGER</p><h3>Settlement</h3></div><b>// ERC-6909 CUSTODY</b><span>Swapper deltas net against the hook's claim mint and burn inside one unlock. Anything unsettled reverts the whole transaction.</span></article>
+    <div className="hook-runtime"><p>// ONE EXACT-INPUT QUOTE</p><div><span>canonical route</span><i>→</i><span>beforeSwap</span><i>→</i><span>SegmentedTorus4</span><i>→</i><span>BeforeSwapDelta</span><i>→</i><span>manager settles</span></div></div>
   </div></section>;
 }
+
+/** Human display for WAD amounts: grouped digits, fewer decimals as values grow. */
+export const displayWad = (value: bigint) => {
+  const units = Number(value / (10n ** 12n)) / 1_000_000;
+  return units.toLocaleString("en-US", { maximumFractionDigits: units >= 1_000 ? 2 : 4 });
+};
+
+const compactWad = (value: bigint) => {
+  const units = Number(value / (10n ** 12n)) / 1_000_000;
+  return units >= 1_000_000 ? `${(units / 1_000_000).toFixed(1)}M` : units.toLocaleString("en-US", { maximumFractionDigits: 2 });
+};
 
 const plotNumber = (value: bigint) => Number(value / (10n ** 12n)) / 1_000_000;
 
@@ -271,7 +323,7 @@ function CurvePlot({ points, committed, preview, input, output, selectedTick, co
     <line className="curve-guide" x1={previewX} x2={previewX} y1={previewY} y2="264" />
     <line className="curve-guide" x1="58" x2={previewX} y1={previewY} y2={previewY} />
     <circle className="curve-dot curve-dot-preview" cx={previewX} cy={previewY} r="6" />
-    <text className="curve-coordinate" x={Math.min(410, previewX + 10)} y={Math.max(70, previewY - 10)}>({formatWad(preview[input], 1)}, {formatWad(preview[output], 1)})</text>
+    <text className="curve-coordinate" x={Math.min(410, previewX + 10)} y={Math.max(70, previewY - 10)}>({compactWad(preview[input])}, {compactWad(preview[output])})</text>
     <text x="58" y="287">{plot.minX.toFixed(1)}</text><text x="446" y="287">{plot.maxX.toFixed(1)}</text>
     <text className="axis-label" x="446" y="309">{assets[input]} RESERVE →</text>
     <text className="axis-label axis-label-y" x="58" y="42">↑ {assets[output]} RESERVE</text>
@@ -320,8 +372,10 @@ function LaunchSimulator() {
   const bitmap = quoted.preview?.interiorBitmap ?? committedBitmap;
   const visibleReserves = quoted.preview?.reserves ?? sandbox.reserves;
   const visibleTicks = quoted.preview?.ticks ?? sandbox.ticks;
-  const sliderValue = parsed.value ? Number(parsed.value * 10n / (10n ** 18n)) / 10 : 0;
-  const effectiveRate = quoted.preview && parsed.value ? Number(quoted.preview.amountOut * 100_000n / parsed.value) / 100_000 : 1;
+  const maxInput = useMemo(() => maxQuotableInput(sandbox, input, output), [sandbox, input, output]);
+  const sliderMax = Math.max(1, Number(maxInput / (10n ** 18n)));
+  const sliderValue = parsed.value ? Number(parsed.value / (10n ** 18n)) : 0;
+  const rate = rateFor(quoted.preview, parsed.value);
   const totalReserve = visibleReserves.reduce((sum, reserve) => sum + reserve, 0n);
   const chooseInput = (next: number) => { setInput(next); if (next === output) setOutput((next + 1) % simulatorAssets.length); setAmountText(""); };
   const chooseOutput = (next: number) => { setOutput(next); if (next === input) setInput((next + simulatorAssets.length - 1) % simulatorAssets.length); setAmountText(""); };
@@ -334,42 +388,42 @@ function LaunchSimulator() {
   };
   const reset = () => { setSandbox(createSandboxState()); setInput(0); setOutput(2); setAmountText(""); setSelectedTick(0); setHistory([]); };
   const chooseAsset = (kind: "input" | "output", next: number) => kind === "input" ? chooseInput(next) : chooseOutput(next);
-  return <section className="simulator-section launch-simulator" id="simulator" aria-labelledby="simulator-title"><div className="simulator-heading"><p className="section-index">/ APP · EXACT-INPUT SANDBOX</p><h2 id="simulator-title">See the reserve book <em>in motion.</em></h2><p>Pick a canonical pair, submit exact input, and inspect the same local BigInt quote through tick planes, a two-asset curve, and the updated four-asset reserve state. A commit advances only this offline fixture.</p></div>
+  return <section className="simulator-section launch-simulator" id="simulator" aria-labelledby="simulator-title"><div className="simulator-heading"><p className="section-index">/ APP · EXACT-INPUT SANDBOX</p><h2 id="simulator-title">See the reserve book <em>in motion.</em></h2><p>Pick a canonical pair, submit exact input, and inspect the same local BigInt quote through tick planes, a two-asset curve, and the updated four-asset reserve state. A commit advances only this local sandbox, never a live pool.</p></div>
     <div className="simulator-grid">
       <article className="sim-panel sim-plane"><div className="sim-rule"><span>01 / TICK PLANES</span><b>RINGS = TICKS · DOT = RESERVE VECTOR</b></div><TickPlane committed={sandbox.reserves} preview={visibleReserves} ticks={sandbox.ticks} bitmap={bitmap} crossings={quoted.preview?.crossings ?? 0} selectedTick={selectedTick} /><p>The outlined marker is committed state; the filled marker is the live quote preview.</p></article>
       <article className="sim-panel sim-curve"><div className="sim-rule"><span>02 / TWO-ASSET PLANE</span><b>{assets[input]} / {assets[output]} · TICK {selectedTick + 1}</b></div><CurvePlot points={curve} committed={sandbox.reserves} preview={visibleReserves} input={input} output={output} selectedTick={selectedTick} committedBitmap={committedBitmap} /><p>The violet segment is where the selected implemented tick remains interior.</p></article>
       <article className="sim-panel sim-console"><div className="sim-rule"><span>03 / LIVE SWAP</span><b>BIGINT PREVIEW</b></div><div className="asset-picker"><span>PAY</span><div>{simulatorAssets.map((asset, index) => <button type="button" className={input === index ? "asset-choice active" : "asset-choice"} aria-pressed={input === index} onClick={() => chooseAsset("input", index)} key={asset}>{asset}</button>)}</div></div>
-        <div className="amount-field"><span>EXACT INPUT</span><label><input aria-label="Exact input amount" inputMode="decimal" placeholder="0.00" value={amountText} onChange={(event) => setAmountText(event.target.value)} /><b>{assets[input]}</b></label><button type="button" onClick={() => setAmountText("100")}>MAX</button></div>
-        <input className="amount-slider" aria-label="Input amount slider" type="range" min="0" max="100" step="0.1" value={Math.min(100, Math.max(0, sliderValue))} onChange={(event) => setAmountText(event.target.value)} />
+        <div className="amount-field"><span>EXACT INPUT</span><label><input aria-label="Exact input amount" inputMode="decimal" placeholder="0.00" value={amountText} onChange={(event) => setAmountText(event.target.value)} /><b>{assets[input]}</b></label><button type="button" onClick={() => setAmountText(formatWad(maxInput, 0))} disabled={maxInput === 0n}>MAX</button></div>
+        <input className="amount-slider" aria-label="Input amount slider" type="range" min="0" max={sliderMax} step="1" value={Math.min(sliderMax, Math.max(0, sliderValue))} onChange={(event) => setAmountText(event.target.value)} />
         <button className="swap-sides" type="button" onClick={swapSides} aria-label="Swap input and output assets">↕</button>
         <div className="asset-picker"><span>RECEIVE</span><div>{simulatorAssets.map((asset, index) => <button type="button" className={output === index ? "asset-choice active" : "asset-choice"} aria-pressed={output === index} onClick={() => chooseAsset("output", index)} key={asset}>{asset}</button>)}</div></div>
-        <div className="quote-output"><span>COMPUTED OUTPUT</span><strong>{quoted.preview ? formatWad(quoted.preview.amountOut) : "0"} <small>{assets[output]}</small></strong><small>1 {assets[input]} ≈ {effectiveRate.toFixed(5)} {assets[output]}</small></div>
+        <div className="quote-output"><span>COMPUTED OUTPUT</span><strong>{quoted.preview ? displayWad(quoted.preview.amountOut) : "0"} <small>{assets[output]}</small></strong><small>{rate === null ? `Enter an amount to quote ${assets[input]} → ${assets[output]}` : `1 ${assets[input]} ≈ ${rate.toFixed(5)} ${assets[output]} · fee ${displayWad(quoted.preview!.fee)} ${assets[input]} (0.05%)`}</small></div>
         {quoted.error ? <p className="quote-error" role="status">{quoted.error}</p> : <p className="quote-note">{quoted.preview ? `${quoted.preview.crossings} boundary crossing${quoted.preview.crossings === 1 ? "" : "s"} · live BigInt preview` : "Enter an amount to preview the shared reserve state."}</p>}
         <div className="sim-actions"><button className="button button-light" type="button" onClick={commit} disabled={!quoted.preview}>Commit swap</button><button className="button" type="button" onClick={reset}>Reset</button></div>
-        <div className="reserve-readout"><p>PREVIEW RESERVE STATE</p>{visibleReserves.map((reserve, index) => <span className={reserve !== sandbox.reserves[index] ? "changed" : ""} key={assets[index]}>{assets[index]} <b>{formatWad(reserve)}</b></span>)}<span className="reserve-total">TOTAL <b>{formatWad(totalReserve)}</b></span></div>
+        <div className="reserve-readout"><p>PREVIEW RESERVE STATE</p>{visibleReserves.map((reserve, index) => <span className={reserve !== sandbox.reserves[index] ? "changed" : ""} key={assets[index]}>{assets[index]} <b>{displayWad(reserve)}</b></span>)}<span className="reserve-total">TOTAL <b>{displayWad(totalReserve)}</b></span></div>
         <div className="sim-ticks"><div><span>TICK PLANE</span><span>K / R</span><span>STATE</span></div>{visibleTicks.map((tick, index) => <button type="button" className={selectedTick === index ? "selected" : ""} onClick={() => setSelectedTick(index)} key={`${tick.radius}-${tick.k}`}><span>{selectedTick === index ? "▸ " : ""}TICK {index + 1}</span><span>{(Number(tick.k * 100n / tick.radius) / 100).toFixed(2)}</span><b>{tick.isInterior ? "INTERIOR" : "BOUNDARY"}</b></button>)}</div>
       </article>
     </div>
-    <div className="sim-history" aria-live="polite"><p>COMMITTED SANDBOX TRANSITIONS</p>{history.length ? history.map((entry, index) => <span key={`${entry.input}-${entry.output}-${index}`}>{assets[entry.input]} → {assets[entry.output]} · {formatWad(entry.amountIn)} in · {formatWad(entry.amountOut)} out · {entry.crossings} crossings</span>) : <span>No local swaps committed. The initial fixture remains active.</span>}</div>
+    <div className="sim-history" aria-live="polite"><p>COMMITTED SANDBOX TRANSITIONS</p>{history.length ? history.map((entry, index) => <span key={`${entry.input}-${entry.output}-${index}`}>{assets[entry.input]} → {assets[entry.output]} · {displayWad(entry.amountIn)} in · {displayWad(entry.amountOut)} out · {entry.crossings} crossings</span>) : <span>No local swaps committed. The initial demo basket remains active.</span>}</div>
     <div className="sim-trace"><div><p className="section-index">VERIFICATION TRACE</p><h3>Replay the committed crossing fixture.</h3><p>The deterministic trace below remains separate from the interactive sandbox and verifies the versioned WAD transition exactly.</p></div><ReplayPanel /></div>
   </section>;
 }
 
-function SandboxTeaser() {
-  return <section className="sandbox-teaser" id="explorer"><div><p className="section-index">/ 08 · Launch sandbox</p><h2>Trade the shared<br /><em>reserve book.</em></h2><p>Choose any canonical pair and watch a local exact-input quote advance one four-asset state.</p><a className="button button-light" href="/app">Open sandbox ↗</a></div><div className="teaser-book" aria-label="Initial sandbox reserve state">{simulatorAssets.map((asset) => <span key={asset}><i />{asset}<b>100.00</b></span>)}<small>4 ASSETS · 6 CANONICAL PAIRS · BIGINT MODEL</small></div></section>;
+function SandboxTeaser({ navigate }: { navigate: Navigate }) {
+  return <section className="sandbox-teaser" id="explorer"><div><p className="section-index">/ 08 · Launch sandbox</p><h2>Trade the shared<br /><em>reserve book.</em></h2><p>Choose any canonical pair and watch a local exact-input quote advance one four-asset state.</p><a className="button button-light" href="/app" onClick={(event) => { event.preventDefault(); navigate("app"); }}>Open sandbox ↗</a></div><div className="teaser-book" aria-label="Initial sandbox reserve state">{simulatorAssets.map((asset, index) => <span key={asset}><i />{asset}<b>{compactWad(createSandboxState().reserves[index])}</b></span>)}<small>4 ASSETS · 6 CANONICAL PAIRS · BIGINT MODEL</small></div></section>;
 }
 
-function LaunchApp({ navigate }: { navigate: (route: Route) => void }) {
+function LaunchApp({ navigate }: { navigate: Navigate }) {
   return <main className="launch-app"><header className="launch-nav"><button className="launch-brand" type="button" onClick={() => navigate("home")}><OrbitalMark /><span>orbital</span></button><nav><button type="button" onClick={() => navigate("home")}>Protocol</button><button type="button" onClick={() => navigate("docs")}>Docs</button></nav><span className="sandbox-status"><i /> Sandbox active</span></header>
     <LaunchSimulator />
-    <footer className="launch-footer"><span>Prototype · no wallet connection · no public settlement</span><button type="button" onClick={() => navigate("home")}>Back to landing ↑</button></footer></main>;
+    <footer className="launch-footer"><span>Local model of the demo hook · no wallet connection</span><button type="button" onClick={() => navigate("home")}>Back to landing ↑</button></footer></main>;
 }
 
-function FooterCta() {
-  return <><section className="gateway" id="gateway"><span aria-hidden="true">ORBITAL</span><div><p className="section-index">/ 08 · Gateway</p><h2>The reserve book<br /><em>is taking shape.</em></h2><p>Explore the specification and simulator while the public testnet interface is still being completed.</p><a className="button button-light" href="/docs">Read documentation ↗</a></div></section><footer><span>© 2026 Orbital</span><span>Prototype · Not audited · No public deployment</span></footer></>;
+function FooterCta({ navigate }: { navigate: Navigate }) {
+  return <><section className="gateway" id="gateway"><span aria-hidden="true">ORBITAL</span><div><p className="section-index">/ 09 · Gateway</p><h2>The reserve book<br /><em>is taking shape.</em></h2><p>Explore the specification and simulator while the public testnet interface is still being completed.</p><a className="button button-light" href="/docs" onClick={(event) => { event.preventDefault(); navigate("docs"); }}>Read documentation ↗</a></div></section><footer><span>© 2026 Orbital</span><span>Prototype · Not audited · No public deployment</span></footer></>;
 }
 
-function Home() { return <><Hero /><Manifesto /><Problem /><Geometry /><HomePrinciples /><Principles /><Architecture /><SharedHookMap /><SandboxTeaser /><FooterCta /></>; }
+function Home({ navigate }: { navigate: Navigate }) { return <><Hero navigate={navigate} /><Manifesto /><Problem /><Geometry /><HomePrinciples /><Principles /><Architecture /><SharedHookMap /><SandboxTeaser navigate={navigate} /><FooterCta navigate={navigate} /></>; }
 
 function StoryCaption({ chapter, progress, index }: { chapter: typeof chapters[number]; progress: MotionValue<number>; index: number }) {
   const start = index / 6 + .015; const end = (index + 1) / 6 - .015;
@@ -399,10 +453,10 @@ function Docs() {
   const ref = useRef<HTMLElement>(null); const reduced = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const progress = useSpring(scrollYProgress, { stiffness: 105, damping: 28, restDelta: .0001 });
-  return <main className={reduced ? "docs reduced" : "docs"}><section className="docs-hero"><p className="eyebrow"><b /> PROTOCOL DOCUMENTATION</p><h1>Liquidity is a<br /><em>shared surface.</em></h1><p>Orbital’s prototype explains itself through the reserve state it actually implements. Scroll through the routing, geometry, range, and settlement boundaries.</p><a className="underlink" href="#story">Begin the story ↓</a></section><section ref={ref} className="scroll-story" id="story"><div className="story-sticky"><StoryStage progress={progress} />{chapters.map((chapter, index) => <StoryCaption key={chapter[0]} chapter={chapter} progress={progress} index={index} />)}</div></section><section className="docs-close"><p className="section-index">REFERENCE</p><h2>Read the precise <em>implementation boundary.</em></h2><p>The visual story is an introduction, not a substitute for the specification. The current repository has no verified public deployment or public settlement interface.</p><a className="button button-light" href="https://github.com/Sarnav07/Orbital/blob/main/docs/SPECIFICATION.md" target="_blank" rel="noreferrer">Open specification ↗</a></section></main>;
+  return <main className={reduced ? "docs reduced" : "docs"}><section className="docs-hero"><p className="eyebrow"><b /> PROTOCOL DOCUMENTATION</p><h1>Liquidity is a<br /><em>shared surface.</em></h1><p>Orbital’s prototype explains itself through the reserve state it actually implements. Scroll through the routing, geometry, range, and settlement boundaries.</p><a className="underlink" href="#story">Begin the story ↓</a></section><section ref={ref} className="scroll-story" id="story"><div className="story-sticky"><StoryStage progress={progress} />{chapters.map((chapter, index) => <StoryCaption key={chapter[0]} chapter={chapter} progress={progress} index={index} />)}</div></section><section className="docs-close"><p className="section-index">REFERENCE</p><h2>Read the precise <em>implementation boundary.</em></h2><p>The visual story is an introduction, not a substitute for the specification. No verified public deployment is claimed here; the hook settles through a real PoolManager in tests and local deployments.</p><a className="button button-light" href="https://github.com/Sarnav07/Orbital/blob/main/docs/SPECIFICATION.md" target="_blank" rel="noreferrer">Open specification ↗</a></section></main>;
 }
 
 export function App() {
-  const [ready, setReady] = useState(false); const [route, navigate] = useRoute();
-  return <><AnimatePresence>{!ready && <Preloader done={() => setReady(true)} />}</AnimatePresence>{route !== "app" && <Nav route={route} navigate={navigate} />}<AnimatePresence mode="wait"><motion.div key={route} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>{route === "docs" ? <Docs /> : route === "app" ? <LaunchApp navigate={navigate} /> : <Home />}</motion.div></AnimatePresence></>;
+  const [ready, setReady] = useState(!firstVisit); const [route, navigate] = useRoute();
+  return <><AnimatePresence>{!ready && <Preloader done={() => setReady(true)} />}</AnimatePresence>{route !== "app" && <Nav route={route} navigate={navigate} />}<AnimatePresence mode="wait"><motion.div key={route} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>{route === "docs" ? <Docs /> : route === "app" ? <LaunchApp navigate={navigate} /> : <Home navigate={navigate} />}</motion.div></AnimatePresence></>;
 }
