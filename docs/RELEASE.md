@@ -21,25 +21,29 @@ Required local tooling is Foundry `v1.7.1`, Python `3.14.6`, Node.js, Git, and M
 
 | Surface | Evidence |
 | --- | --- |
-| Shared-book routing | Solidity tests exercise canonical pair directions and a stateful all-pair sequence against one reserve book. |
+| Real v4 settlement | Integration tests drive a real PoolManager and `PoolSwapTest`: 6↔18-decimal swaps, all six pairs on one book, crossings and recovery, fees, slippage/deadline guards, native-liquidity and foreign-pool rejection. |
+| Shared-book routing | Every route moves only its two coordinates of one reserve vector; a zero-fee, 18-decimal hook reproduces the engine vectors to the wei through the manager. |
+| Deployment | `DeployOrbitalDemo` and `DeployOrbitalHook` are executed in tests and were broadcast to a local anvil node, followed by a `cast` swap. |
+| Solvency | A fuzzed invariant over random swaps, deposits, withdrawals and fee collection keeps claims custody ≥ required inventory and the book on the aggregate torus. |
 | Geometry and crossings | Solidity and independent Python tests cover fixed-partition quotes, tick crossing, recovery, invalid states, and precision bounds. |
 | LP accounting | Range-share and fee-book tests cover proportional claims, independent range inventory, dust, and unauthorized-withdrawal boundaries. |
-| BigInt replay | The dependency-free simulator replays a versioned WAD fixture using exact integer transitions, including tick crossing and reverse recovery. |
+| BigInt replay | The simulator recomputes every recorded transition and rejects any amount or bitmap it cannot reproduce. Solidity and JavaScript assert the same vector file exactly. |
 
-The final regression command currently runs 44 Solidity tests, 31 independent Python-reference tests, and 8 simulator tests. [Gas measurements](results/gas-baseline.md) are bounded local hook-operation measurements, not end-to-end router or deployment costs.
+The regression command currently runs 65 Solidity tests (including 2 invariant campaigns), 31 independent Python-reference tests, 11 simulator tests and 19 app tests, plus the app typecheck and production build. [Gas measurements](results/gas-baseline.md) are full swaps through a real PoolManager and router.
 
 ## Deployment provenance
 
-The hook deployment recipe is [`DeployOrbitalHook.s.sol`](../contracts/script/DeployOrbitalHook.s.sol). It mines the v4 permission-address salt from exact constructor calldata and reads `PRIVATE_KEY`, `POOL_MANAGER`, and mock-token addresses only from environment variables.
+The end-to-end recipe is [`DeployOrbitalDemo.s.sol`](../contracts/script/DeployOrbitalDemo.s.sol); [`DeployOrbitalHook.s.sol`](../contracts/script/DeployOrbitalHook.s.sol) deploys only the hook against existing tokens. Both mine the v4 permission-address salt against the CREATE2 factory that performs the deployment, sort tokens canonically and read their decimals. Secrets come only from environment variables.
 
 No deployment transaction, contract address, or testnet claim is included in this revision. A future deployment record must include the chain, transaction hash, deployed addresses, source commit, constructor inputs, and independently refreshed hook reads before it is marked live.
 
 ## Current limits
 
-- Fixed demo basket: four mock assets and two configured ranges; this is not a universal stablecoin pool.
+- Fixed demo basket: four mock assets and three configured ranges; this is not a universal stablecoin pool.
 - Exact-input behavior only. Exact-output routing is rejected.
-- The hook adapter is tested with a local manager fixture. It is not a production custody path or a deployed PoolManager integration.
-- No verified public solver/router or position-manager calldata schema is included in this revision.
+- A swap that would trap every range (all-boundary continuation) reverts in full.
+- The demo router is v4-core's `PoolSwapTest`; no production router, position manager or wallet UI is included.
+- Fees go to ranges interior at swap start, weighted by radius; there is no fee governance or pause authority.
 - The BigInt replayer is an explanatory fixture, not a production price or execution service.
 - No audit, economic review, real-fund deployment, or depeg-exit safety claim is made.
 

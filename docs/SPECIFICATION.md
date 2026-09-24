@@ -6,7 +6,7 @@ This document defines the implementation's conventions and requirements. It is n
 
 The demo targets Unichain Sepolia with an immutable four-token mock basket: USDC/USDT use 6 decimals and DAI/FRAX use 18. These are test assets, not issuer-backed tokens. Six canonical Uniswap v4 pair interfaces access one logical reserve book through the hook. A pair interface does not own a separate allocation of liquidity.
 
-Supported operation targets are exact-input swaps, proportional basket liquidity entry/exit, per-range LP shares, and fee collection. Fee-on-transfer and rebasing tokens, exact-output swaps and single-token LP entry are outside the initial domain. Canonical token ordering, pair membership and hook callback authorization must be checked before state mutation.
+Supported operations are exact-input swaps, proportional per-range liquidity entry/exit, per-range LP shares, and fee collection. Fee-on-transfer and rebasing tokens, exact-output swaps and single-token LP entry are outside the initial domain. Canonical token ordering, pair membership and hook callback authorization must be checked before state mutation.
 
 ## Coordinates and units
 
@@ -63,7 +63,7 @@ The zero-width endpoint `k_min` is supported analytically: s = 0, x_min = x_max 
 
 ### Four-asset fixed-point prototype
 
-The first Solidity geometry implementation fixes `n = 4`, so `sqrt(n) = 2` exactly in WAD. Its input radius is positive, even in WAD units, and at most `1e29`; these are arithmetic-domain limits, not liquidity limits. It calculates `q = r/2`, `k_min = r`, `k_max = 3r/2`, `s² = (k-r)(3r-k)`, and uses a floored WAD square root. The `sqrt(3)` coefficient is a floored WAD constant. Every value is therefore directionally rounded down and is expected to differ from the Decimal reference by a bounded amount. The next chunk must derive those bounds and compare implementation vectors before this geometry quotes trades.
+The first Solidity geometry implementation fixes `n = 4`, so `sqrt(n) = 2` exactly in WAD. Its input radius is positive, even in WAD units, and at most `1e29`; these are arithmetic-domain limits, not liquidity limits. It calculates `q = r/2`, `k_min = r`, `k_max = 3r/2`, `s² = (k-r)(3r-k)`, and uses a floored WAD square root. The `sqrt(3)` coefficient is a floored WAD constant. Every value is therefore directionally rounded down and differs from the Decimal reference by a bounded amount. The segmented WAD fixture matches the Decimal reference to 18 decimals (`40.123552802932248591…`), and the Solidity engine, the PoolManager settlement path and the BigInt simulator agree exactly on the shared vectors in `packages/fixtures/quote-vectors-v1.json`.
 
 ## Aggregate invariant and segmented reference trades
 
@@ -83,7 +83,7 @@ The current reference applies no fees and uses Decimal bracketing rather than a 
 
 The solver rejects zero input, identical/out-of-range assets, output reserves below two raw WAD units, invalid initial aggregate state, unsupported all-boundary continuation, reserve-domain overflow, no physical root, and a candidate whose relative aggregate residual exceeds `1e-9`. That numerical acceptance bound is temporary solver-domain policy, not a claim about economic error, slippage, LP solvency or a final protocol tolerance. It is measured against `rInterior²` and will be re-evaluated alongside fixed-point differential vectors.
 
-Fixed-partition quotes do not discover a tick crossing and must not be settled as if their partition remained valid after one. The next chunk must locate the first crossing, solve only to that boundary, update the aggregate state, and continue with the remaining input. Fees and real-inventory constraints are also outside this quote library.
+Fixed-partition quotes do not discover a tick crossing and must not be settled as if their partition remained valid after one; `SegmentedTorus4` (below) performs the crossing. Fees and real-inventory constraints live in the hook, not in this quote library.
 
 ### Tick crossing and recovery
 
@@ -112,44 +112,62 @@ The logical basket state must distinguish:
 
 Virtual offsets are never redeemable. At settled operation boundaries, accounted custody must cover real inventory plus separately accrued fees and assigned dust, without counting the same balance twice. Pending v4 deltas must settle before an operation completes. Swaps through any pair change the same basket state. A failure reverts the entire operation.
 
-### Current v4 adapter boundary
+### v4 adapter and settlement
 
-`OrbitalV4Hook` is the first protocol adapter over the bounded four-asset engine. Its constructor receives a manager address, a strictly address-sorted immutable four-currency registry, a matched initial reserve vector, and the bounded tick set. It accepts a `PoolKey` only when it has two distinct registered currencies in canonical address order, the hook address, and the configured fee and tick spacing. It supports exact-input swaps only.
+`OrbitalV4Hook` is the protocol adapter and custodian. Its constructor receives a manager address, a strictly address-sorted immutable four-currency registry, each currency's decimals, a matched initial reserve vector, the bounded tick set, the pool fee, tick spacing and an owner. It deploys its own `RangeFeeBook4` as the LP share and fee ledger. The constructor calls `Hooks.validateHookPermissions`, so a deployment at an address that does not encode the permission flags reverts.
 
-For an accepted route, `beforeSwap` identifies the pair's two indices in the one shared reserve vector, runs `SegmentedTorus4`, persists the resulting aggregate state and tick statuses, then returns a v4 `BeforeSwapDelta`: positive specified input and negative unspecified output. This is the v4 convention that replaces the concentrated-liquidity leg with the hook's custom curve result. The adapter implements every `IHooks` selector, but all callbacks other than `beforeSwap` explicitly revert.
+Permissions are `beforeInitialize`, `beforeAddLiquidity`, `beforeSwap` and `beforeSwapReturnDelta` (flag bits `0x2888`). `beforeInitialize` accepts only the six canonical keys: two distinct registered currencies in address order, this hook, the configured fee and spacing. `beforeAddLiquidity` always reverts, so native concentrated liquidity cannot be attached to Orbital pools. Every other callback reverts.
 
-The repository also includes a minimal manager-side accounting fixture. It invokes the hook as its configured manager, decodes v4's `BeforeSwapDelta`, and records the input receipt and output payment by currency. It proves that two different canonical pair routes change the same four-asset book and that their custom-delta legs can be accounted for independently. The fixture does not imitate PoolManager internals, transfer ERC-20 balances, initialize pools, or prove production settlement.
+For an accepted exact-input route, `beforeSwap`:
 
-The required deployment permission pattern is `beforeSwap` plus `beforeSwapReturnDelta`. This implementation exposes that pattern for the later deterministic address-mining/deployment step, but deliberately does not validate the constructor address yet. Until that step and a real PoolManager settlement flow are implemented, no statement of testnet readiness is warranted.
+1. Rejects exact-output input and swaps before seeding.
+2. Decodes optional `hookData = abi.encode(uint256 minAmountOut, uint256 deadline)`; empty data applies no guard.
+3. Takes the fee `ceil(amountIn * fee / 1e6)` in raw input units, converts the net input to WAD exactly with `TokenUnits.toWad`, and runs `SegmentedTorus4` on the shared reserve vector.
+4. Converts the WAD output with `TokenUnits.fromWadDown`; the unpaid WAD remainder stays in custody as non-redeemable dust.
+5. Requires every reserve to stay at or above the sum of range virtual offsets (real inventory cannot go negative).
+6. Persists the reserve vector, aggregate state and tick statuses, credits the fee to ranges that were interior when the swap started (weighted by radius), then mints the gross input as PoolManager ERC-6909 claims and burns output claims.
+7. Returns `BeforeSwapDelta(+amountIn, -amountOut)`, which replaces the concentrated-liquidity leg. The swapper's router settles its side in the same unlock.
+
+Custody is held entirely as PoolManager claims. `solvency()` compares held claims with the required amount: `ceil((reserve_i - Σ virtualOffset) / 10^(18-decimals_i)) + unpaid fees_i`. Tests and a fuzzed invariant assert that custody always covers it.
+
+Range liquidity enters only through the hook:
+
+- `seed(recipient)` (owner, once) pulls each asset's real inventory at the configured state and mints one share per WAD of range radius. `MIN_LOCKED_SHARES` of each range are locked to `address(0)` so a range can never be emptied into an unpriceable zero-radius tick.
+- `addLiquidity(rangeId, shares, maxAmountsIn, deadline)` and `removeLiquidity(rangeId, shares, minAmountsOut, deadline)` scale that range's radius and `k` by the share ratio, keeping `k/r` fixed, and move its attributed coordinate by the same ratio. The torus invariant is re-checked. Rounding favours the pool: additions round the radius (to an even WAD value) and coordinates up; removals round them down. The user pays or receives the change in required raw inventory, so custody minus requirement never decreases.
+- `collectFees(rangeId, recipient)` pays the caller's checkpointed fees for one range.
+
+`previewAddLiquidity`, `previewRemoveLiquidity` and `seedAmounts` expose the exact amounts.
 
 ### Range attribution and LP claims
 
 `RangeLiquidity4` derives each tick's coordinate from the current aggregate reserve vector and its recorded interior/boundary status. Interior ranges receive the shared centered direction in proportion to radius; boundary ranges receive it in proportion to their boundary-sphere radius. Each range's virtual offset is the tick's `x_min`, and its redeemable inventory is `coordinate - virtualOffset` per asset. Virtual offsets are not an LP claim.
 
-This derivation is defined in both interior and boundary states. It does not impose a pool-wide withdrawal freeze when one range is trapped. Fixed-point directional allocation can differ from the aggregate coordinate by a bounded number of WAD-wei; it is explicitly non-redeemable attribution dust and is carried forward for C10 reconciliation rather than assigned to an LP by rounding.
+This derivation is defined in both interior and boundary states. It does not impose a pool-wide withdrawal freeze when one range is trapped. Fixed-point directional allocation can differ from the aggregate coordinate by a bounded number of WAD-wei; it is non-redeemable attribution dust, never assigned to an LP by rounding.
 
-`RangeShareBook4` stores claims by `(rangeId, owner)`. Bootstrap assigns a specified initial share supply to the attributed inventory of one range. Subsequent deposits must reproduce that range's current four-asset inventory ratio exactly; the matching shares are minted to the depositor. A burn returns the proportional real inventory of that same range, with a full burn returning every remaining unit. No operation reads a global pool pro-rata balance or another range's inventory. The current book is an accounting component: ERC-20 custody, hook callback authorization, post-swap share-state synchronization, and fee liabilities remain later integration work.
+`RangeShareBook4` stores claims by `(rangeId, owner)`. Bootstrap assigns a specified initial share supply to the attributed inventory of one range. Subsequent deposits must reproduce that range's current four-asset inventory ratio exactly; the matching shares are minted to the depositor. A burn returns the proportional real inventory of that same range, with a full burn returning every remaining unit. No operation reads a global pool pro-rata balance or another range's inventory. `RangeShareBook4` is a standalone, controller-only accounting primitive. The hook itself does not use it: it derives range inventory live from the reserve book and keeps shares in `RangeFeeBook4`, so no stored inventory can go stale after swaps.
 
 ### Fee growth and dust policy
 
-`RangeFeeBook4` records fee growth per range and per asset in WAD units per LP share. A settled swap segment supplies its participating range IDs and nonzero weights; the segment's fee amount is split by those weights, then each range's allocation is converted to per-share growth. LP balances checkpoint before every mint or burn, so newly minted shares cannot claim prior growth and burned shares retain already-accrued claims. Collection returns the caller's checkpointed claim for that range only.
+`RangeFeeBook4` is the hook's LP ledger. It records shares per range and fee growth per range and per asset in Q128 units per share, so six-decimal raw fees remain claimable against WAD-scale share supplies. A settled swap segment supplies its participating range IDs and nonzero weights; the segment's fee amount is split by those weights, then each range's allocation is converted to per-share growth. LP balances checkpoint before every mint or burn, so newly minted shares cannot claim prior growth and burned shares retain already-accrued claims. Only the controller (the hook) can mint, burn, accrue or collect; collection returns an owner's checkpointed claim for that range only.
 
-Two rounding stages are explicit: a segment's integer split remainder, and the remainder when a range allocation becomes per-share growth. Both are accumulated as non-redeemable, per-asset dust rather than assigned by an arbitrary last-recipient rule. This commit defines accounting math only: C11 must connect fee inputs to actual v4 settlement and C10 does not introduce a fee rate, pause authority, or ERC-20 transfers.
+Two rounding stages are explicit: a segment's integer split remainder, and the remainder when a range allocation becomes per-share growth. Both are accumulated as non-redeemable, per-asset dust rather than assigned by an arbitrary last-recipient rule. The hook supplies the fee inputs from real settled swaps and pays collections from its PoolManager claims. There is no fee-rate governance or pause authority: the fee is immutable per deployment.
 
-LP shares refer to one normalized range, not a global pro-rata claim over differently exposed ranges. Proportional entry/exit refers to that range's current attributed basket, not automatically equal dollar deposits. Fee collection cannot withdraw principal. Deposits cannot claim pre-existing fees. The fixed fee's value and allocation among participating ticks must be specified before fee code; boundary status alone does not imply zero participation.
+LP shares refer to one normalized range, not a global pro-rata claim over differently exposed ranges. Proportional entry/exit refers to that range's current attributed basket, not automatically equal dollar deposits. Fee collection cannot withdraw principal. Deposits cannot claim pre-existing fees. Fee allocation policy: a swap's fee is split across the ranges that were interior when it started, weighted by radius. Ranges trapped at a boundary during the whole swap earn nothing from it. This is a deliberate prototype simplification: a range that becomes trapped mid-swap still receives a full share, and boundary ranges that absorb part of a crossing trade are not credited.
 
 Range identity uses lambda, not radius or absolute k. The reference reports an exact rational k/r for supplied finite decimals. Approximate equality must not merge ranges. The future on-chain range grid/encoding needs its own derivation; reference Decimal rounding is not the grid.
 
 ## Failure policy and unresolved obligations
 
-Reject invalid dimensions, nonfinite/negative quantities, unsupported decimals, invalid ranges, invalid sphere states, singular rates and overflow. The geometry reference rejects out-of-bound k rather than silently clamping inputs. Later trade execution must reject insufficient real inventory, invalid solution branches, convergence/crossing limits, unsupported pairs, unauthorized callbacks, stale deadlines and inadequate minimum outputs.
+Reject invalid dimensions, nonfinite/negative quantities, unsupported decimals, invalid ranges, invalid sphere states, singular rates and overflow. The geometry reference rejects out-of-bound k rather than silently clamping inputs. Trade execution rejects insufficient real inventory, invalid solution branches, convergence/crossing limits, unsupported pairs, unauthorized callbacks, stale deadlines and inadequate minimum outputs.
 
-The following are deliberately unresolved, and block the corresponding implementation claims:
+Implemented since the initial specification: WAD normalization in the adapter, real PoolManager settlement with claim custody, deterministic hook-address mining through the CREATE2 factory, canonical pool initialization, range liquidity entry/exit and fee settlement.
 
-- All-boundary continuation, production branch-selection bounds and fixed-point torus solving.
-- ERC-20 custody, hook-authorized share mutations, post-swap inventory synchronization and reconciliation of on-chain balances with recorded claims/dust.
-- Fee-rate governance, pause authority and actual v4 fee settlement.
-- Fixed-point geometry format, supported radius/range grid, numeric tolerances and gas/iteration limits.
-- Production v4 settlement, deterministic hook-address mining, pool initialization and deployment-specific integration tests.
+The following remain deliberately unresolved, and block the corresponding claims:
+
+- All-boundary continuation. A swap that would trap every range reverts in full.
+- Fee-rate governance, pause authority and protocol fees.
+- A proven error budget for the fixed-point solver beyond the current `1e-9` relative-residual acceptance rule, and gas limits for pathological crossing sequences (measured: 1.22M ordinary, 3.14M one crossing, 4.80M two crossings).
+- A public router or position manager beyond v4-core's `PoolSwapTest` demo router.
+- Fee-on-transfer, rebasing or non-standard tokens, and any audit or economic review.
 
 The sphere reference is not a swap engine, LP accountant or proof of depeg protection. Those components must satisfy the conservation requirements separately.
