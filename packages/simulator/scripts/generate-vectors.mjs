@@ -2,7 +2,7 @@
 // Solidity (contracts/test/QuoteVectors.t.sol) replays the same file and must
 // reproduce every amountOut, reserve and bitmap exactly.
 import { writeFileSync } from "node:fs";
-import { WAD, aggregateTicks, quoteExactIn } from "../src/quote.js";
+import { WAD, aggregateTicks, attributeRanges, quoteExactIn } from "../src/quote.js";
 
 const RADIUS = 10_000_000n * WAD;
 const ticks = [1001n, 1004n, 1050n].map((lambda) => ({ radius: RADIUS, k: RADIUS * lambda / 1000n, isInterior: true }));
@@ -22,15 +22,20 @@ for (const [input, output, units] of plan) {
   const result = quoteExactIn({ state: aggregateTicks(state), ticks: state, reserves, input, output, amountIn });
   state = state.map((tick, index) => ({ ...tick, isInterior: (result.interiorBitmap & (1n << BigInt(index))) !== 0n }));
   reserves = result.reserves;
+  const attribution = attributeRanges({ state: aggregateTicks(state), ticks: state, reserves }).map((range) => ({
+    virtualOffset: range.virtualOffset.toString(),
+    coordinates: range.coordinates.map(String),
+    realInventory: range.realInventory.map(String),
+  }));
   actions.push({
     input, output, amountIn: amountIn.toString(), amountOut: result.amountOut.toString(),
-    crossings: result.crossings, interiorBitmap: result.interiorBitmap.toString(), reserves: reserves.map(String),
+    crossings: result.crossings, interiorBitmap: result.interiorBitmap.toString(), reserves: reserves.map(String), attribution,
   });
 }
 
 const fixture = {
   version: 1,
-  description: "Demo-scale four-asset sequence (three 10M-WAD ranges, k/r 1.001/1.004/1.05) with crossings and recovery.",
+  description: "Demo-scale four-asset sequence (three 10M-WAD ranges, k/r 1.001/1.004/1.05) with crossings, recovery and per-range attribution after each step.",
   ticks: ticks.map((tick) => ({ radius: tick.radius.toString(), k: tick.k.toString() })),
   initialReserves: initialReserves.map(String),
   actions,

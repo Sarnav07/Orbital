@@ -1,6 +1,7 @@
 import {
   WAD,
   aggregateTicks,
+  attributeRanges,
   quoteExactIn,
 } from "../../packages/simulator/src/quote.js";
 
@@ -195,6 +196,81 @@ export function maxQuotableInput(sandbox: SandboxState, input: number, output: n
 export function effectiveRate(preview: QuotePreview | undefined, amountIn: bigint | undefined): number | null {
   if (!preview || !amountIn) return null;
   return Number(preview.amountOut * 1_000_000n / amountIn) / 1_000_000;
+}
+
+export type StressStep = {
+  soldTotal: bigint;
+  amountIn: bigint;
+  amountOut: bigint;
+  /** Average output per input for this step, fee included. */
+  rate: number;
+  interior: boolean[];
+  /** Share of each range's real inventory held in the pressured coin (0–1). */
+  exposure: number[];
+};
+
+const shareOf = (inventory: bigint[], asset: number) => {
+  const total = inventory.reduce((sum, value) => sum + value, 0n);
+  return total === 0n ? 0 : Number(inventory[asset] * 1_000_000n / total) / 1_000_000;
+};
+
+function exposures(sandbox: SandboxState, asset: number): number[] {
+  return attributeRanges({ state: aggregateTicks(sandbox.ticks), ticks: sandbox.ticks, reserves: sandbox.reserves })
+    .map((range: { realInventory: bigint[] }) => shareOf(range.realInventory, asset));
+}
+
+/**
+ * One-sided depeg model: repeatedly sell `stepAmount` of the pressured coin into
+ * the demo book for `against`, recording rates, range traps and how much of each
+ * range's real inventory ends up in the pressured coin. Stops at the first
+ * unsupported state (e.g. every range trapped) and reports why.
+ */
+export function depegStress(pressured: number, against: number, stepAmount: bigint, maxSteps: number) {
+  let sandbox = createSandboxState();
+  const initialExposure = exposures(sandbox, pressured);
+  const steps: StressStep[] = [];
+  let soldTotal = 0n;
+  let stoppedBy: string | null = null;
+  for (let step = 0; step < maxSteps; step += 1) {
+    let preview: QuotePreview;
+    try {
+      preview = previewSwap(sandbox, pressured, against, stepAmount);
+    } catch (error) {
+      stoppedBy = /all-boundary/i.test(quoteMessage(error))
+        ? "The next step would trap every range at its boundary, which the prototype does not support."
+        : quoteMessage(error);
+      break;
+    }
+    sandbox = commitPreview(preview);
+    soldTotal += stepAmount;
+    steps.push({
+      soldTotal,
+      amountIn: stepAmount,
+      amountOut: preview.amountOut,
+      rate: Number(preview.amountOut * 1_000_000n / stepAmount) / 1_000_000,
+      interior: sandbox.ticks.map((tick) => tick.isInterior),
+      exposure: exposures(sandbox, pressured),
+    });
+  }
+  return { steps, stoppedBy, initialExposure };
+}
+
+/**
+ * Price p of one coin (others at 1) at which a range with normalized boundary
+ * k/r traps, from the specification's single-depeg formula for n = 4:
+ * k/r = 2 − (p + 3) / (2·sqrt(p² + 3)). Display-only; null if it never traps.
+ */
+export function singleDepegTrapPrice(kOverR: number): number | null {
+  const lambda = (p: number) => 2 - (p + 3) / (2 * Math.sqrt(p * p + 3));
+  if (kOverR <= 1 || kOverR > lambda(0)) return null;
+  let low = 0;
+  let high = 1;
+  for (let iteration = 0; iteration < 60; iteration += 1) {
+    const middle = (low + high) / 2;
+    if (lambda(middle) > kOverR) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
 }
 
 export function quoteMessage(error: unknown): string {

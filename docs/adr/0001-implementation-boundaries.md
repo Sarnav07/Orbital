@@ -14,6 +14,7 @@ Consequence: the public reference currently validates geometry only. Agreement b
 
 ## Amendment (2026-09-24): as-built stack and settlement
 
-- The interface is Vite + React with `motion`, not Next.js, and currently has no wallet layer (viem/wagmi) or Three.js. SVG renders all geometry; floating point is used only for display, never for pricing.
+- The interface is Vite + React with `motion`, not Next.js, and has no Three.js. SVG renders all geometry; floating point is used only for display, never for pricing.
+- The wallet layer is viem (pinned) with EIP-6963 injected-wallet discovery, not wagmi. It is code-split so the landing page does not load it, and it needs no API keys.
 - The reference now also covers segmented trades (fixture `reference/fixtures/segmented-v1.json`), and the Solidity engine, PoolManager settlement and BigInt simulator agree exactly on `packages/fixtures/quote-vectors-v1.json`.
 - The hook custodies the basket as v4 PoolManager ERC-6909 claims and settles swaps and range liquidity itself. v4-core pins `PoolManager` to solc 0.8.26, so Foundry auto-selects compilers per unit (`auto_detect_solc`) and tests deploy the manager from its separately compiled artifact.

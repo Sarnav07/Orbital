@@ -9,6 +9,7 @@ const ROOT_ITERATIONS = 96;
 const CROSSING_SAMPLES = 48n;
 const CROSSING_ITERATIONS = 96;
 const MAX_RELATIVE_DRIFT_WAD = 1_000_000_000n;
+const SQRT_THREE_WAD = 1_732_050_807_568_877_293n;
 
 export class QuoteError extends Error {
   constructor(code, message) {
@@ -47,18 +48,23 @@ export function sqrt(value) {
 
 export const sqrtWad = (value) => sqrt(asBigInt(value) * WAD);
 
+/** Mirrors Sphere4.tick for the fields the engine and attribution need. */
 export function tickGeometry(radiusValue, kValue) {
   const radius = asBigInt(radiusValue);
   const k = asBigInt(kValue);
   if (radius <= 0n || radius > MAX_COMPONENT || radius % 2n !== 0n) fail("INVALID_RADIUS", "Invalid tick radius.");
   const maximumK = radius + radius / 2n;
   if (k < radius || k > maximumK) fail("INVALID_BOUNDARY", "Invalid tick boundary.");
-  if (k === radius) return { boundaryRadius: 0n, isDegenerate: true };
+  const q = radius / 2n;
+  if (k === radius) return { boundaryRadius: 0n, minimumReserve: q, isDegenerate: true };
   const delta = k - radius;
-  return {
-    boundaryRadius: sqrtWad(mulWadDown(delta, 2n * radius - delta)),
-    isDegenerate: false
-  };
+  const boundaryRadius = sqrtWad(mulWadDown(delta, 2n * radius - delta));
+  const denominator = k / 2n + mulWadDown(boundaryRadius, SQRT_THREE_WAD) / 2n;
+  const distanceToMaximum = maximumK - k;
+  // m-d evaluated as (k_max-k)^2/(m+d), exactly as the Solidity geometry does.
+  const minimumReserve = k === maximumK ? 0n : divWadDown(mulWadDown(distanceToMaximum, distanceToMaximum), denominator);
+  if (minimumReserve >= q) fail("INVALID_BOUNDARY", "Tick has no real reserve at the peg.");
+  return { boundaryRadius, minimumReserve, isDegenerate: false };
 }
 
 function normalizedState(state) {
@@ -317,4 +323,45 @@ export function quoteExactIn({ state: stateValue, ticks: ticksValue, reserves: r
   }
   if (remaining > 0n) fail("TOO_MANY_CROSSINGS", "Trade crosses more than eight tick boundaries.");
   return { amountOut: totalOut, reserves, state, crossings, interiorBitmap: interiorBitmap(ticks) };
+}
+
+/**
+ * BigInt port of RangeLiquidity4.attribute: each range's coordinate, its
+ * non-redeemable virtual offset, and the real inventory an LP of that range owns.
+ */
+export function attributeRanges({ state: stateValue, ticks: ticksValue, reserves: reservesValue }) {
+  const state = normalizedState(stateValue);
+  const ticks = normalizedTicks(ticksValue);
+  const reserves = normalizedReserves(reservesValue);
+  const rebuilt = aggregateTicks(ticks);
+  if (!isInvariant(state, reserves) || rebuilt.rInterior !== state.rInterior || rebuilt.kBoundary !== state.kBoundary || rebuilt.sBoundary !== state.sBoundary) {
+    fail("AGGREGATE_MISMATCH", "Tick set does not match the aggregate state.");
+  }
+  const sum = reserves.reduce((total, value) => total + value, 0n);
+  const mean = sum / 4n;
+  const alphaInterior = sum / 2n - state.kBoundary;
+  const deviation = (value) => value >= mean ? value - mean : mean - value;
+  const wNorm = sqrtWad(reserves.reduce((total, value) => total + mulWadDown(deviation(value), deviation(value)), 0n));
+  if (wNorm < state.sBoundary) fail("ATTRIBUTION_UNAVAILABLE", "Boundary spread exceeds the reserve spread.");
+  const interiorWNorm = wNorm - state.sBoundary;
+  return ticks.map((tick) => {
+    const geometry = tickGeometry(tick.radius, tick.k);
+    const alphaPart = tick.isInterior ? mulDivDown(alphaInterior, tick.radius, state.rInterior) : tick.k;
+    const directionNumerator = tick.isInterior ? mulDivDown(interiorWNorm, tick.radius, state.rInterior) : geometry.boundaryRadius;
+    const coordinates = reserves.map((value) => {
+      let coordinate = alphaPart / 2n;
+      if (wNorm !== 0n && directionNumerator !== 0n) {
+        const directional = mulDivDown(deviation(value), directionNumerator, wNorm);
+        coordinate = value >= mean ? coordinate + directional : coordinate - directional;
+      }
+      if (coordinate < geometry.minimumReserve) fail("NEGATIVE_REAL_INVENTORY", "A range coordinate fell below its virtual offset.");
+      return coordinate;
+    });
+    return {
+      isInterior: tick.isInterior,
+      virtualOffset: geometry.minimumReserve,
+      coordinates,
+      realInventory: coordinates.map((coordinate) => coordinate - geometry.minimumReserve),
+    };
+  });
 }

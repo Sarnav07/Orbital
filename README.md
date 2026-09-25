@@ -106,7 +106,7 @@ The hook checks canonical currency ordering, pair membership, the configured hoo
 
 The following are intentionally outside the current implementation boundary:
 
-- A production router or position manager (the demo uses v4-core's `PoolSwapTest`), and a wallet-connected frontend.
+- A production router or position manager (the demo uses v4-core's `PoolSwapTest`), and mobile/WalletConnect wallets. The app supports injected browser wallets only.
 - Generic asset counts, exact-output swaps, single-token LP entry, fee-on-transfer tokens, and rebasing tokens.
 - All-boundary continuation, a proven fixed-point error budget, fee-rate governance, pause authority, and audits.
 - Any assurance that a stablecoin depeg is harmless or that LP capital is protected.
@@ -134,7 +134,14 @@ Run the complete local validation suite:
 make check
 ```
 
-This checks Solidity formatting, builds the contracts, reports bytecode sizes, runs the Foundry suite (unit, PoolManager integration, cross-language vectors, script and invariant tests), the independent Python reference tests, the simulator tests, and the app's tests, typecheck and production build.
+This checks Solidity formatting, builds the contracts and reports bytecode sizes. It then runs the Foundry suite (unit, PoolManager integration, cross-language vectors, scripts, gas, invariants), the independent Python reference tests, the simulator tests, and the app's unit/render tests, typecheck and production build.
+
+To test the app against real contracts, run `make app-e2e` (requires anvil and jq). It deploys the demo to a throwaway anvil node and drives it with the app's own transaction builders.
+- Swap output must equal the app's quote to the wei.
+- A slippage revert must be decoded.
+- Liquidity amounts must equal the on-chain previews.
+
+`cd app && ORBITAL_LIVE_RPC=https://sepolia.unichain.org npx vitest run src/chain/live.testnet.test.ts` reads the live deployment (read-only).
 
 Run the extended Foundry fuzz profile with:
 
@@ -145,7 +152,13 @@ FOUNDRY_PROFILE=ci forge test -vv
 
 ### Explore the frontend and simulator
 
-The Vite/React interface presents the protocol narrative and a local, deterministic swap sandbox that uses the deployed demo parameters and fee. It does not connect a wallet or settle swaps on-chain.
+The Vite/React interface has the protocol narrative, docs, and an app at `/app` with two tabs:
+
+- **Testnet** trades the live Unichain Sepolia deployment.
+  - Without a wallet, it shows the live book, range states, solvency and swap history.
+  - With an injected wallet (MetaMask, Rabby, Coinbase… via EIP-6963) it can: switch to or add the network; mint mock tokens; approve, then swap with an exact quote and slippage-bounded `minAmountOut`; add or remove range liquidity at the on-chain preview amounts; and collect fees.
+  - Every write is simulated before the wallet is asked to sign, and reverts are explained. You need Unichain Sepolia ETH for gas ([faucets](docs/REMAINING_WORK.md#b-needs-you)).
+- **Sandbox** runs the same BigInt engine locally, with no wallet, and includes a depeg stress model.
 
 ```sh
 cd app
@@ -189,7 +202,7 @@ With `POOL_MANAGER` set to zero, the script deploys a fresh PoolManager. It then
 
 ## Deployment: Unichain Sepolia (chain 1301)
 
-Deployed on 2026-09-24 from commit `16c86048b72025681748d5f95960b6727d0f51e3` with `DeployOrbitalDemo.s.sol`. The broadcast started at block 63,408,440 (25 transactions). The full address list is in [`contracts/deployments/unichain-sepolia.json`](contracts/deployments/unichain-sepolia.json). Every contract has published source: the hook and fee book on Blockscout, and the router and mock tokens on [Sourcify](https://sourcify.dev) (exact match).
+Deployed on 2026-09-24 from commit `ff686ea6d6794d9294862056951e294fb8bf975c` with `DeployOrbitalDemo.s.sol`. The broadcast started at block 63,408,440 (25 transactions). The full address list is in [`contracts/deployments/unichain-sepolia.json`](contracts/deployments/unichain-sepolia.json). Every contract has published source: the hook and fee book on Blockscout, and the router and mock tokens on [Sourcify](https://sourcify.dev) (exact match).
 
 | Contract | Address |
 | --- | --- |

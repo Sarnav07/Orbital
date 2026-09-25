@@ -1,4 +1,4 @@
-.PHONY: check contracts-check reference-check simulator-check app-check
+.PHONY: check contracts-check reference-check simulator-check app-check app-e2e
 
 PYTHON ?= python3
 
@@ -20,3 +20,7 @@ app-check:
 	cd app && npm test
 	cd app && npm run typecheck
 	cd app && npm run build
+
+# Needs anvil, forge and jq. Deploys to a throwaway local node; not part of `check`.
+app-e2e:
+	./scripts/app-e2e.sh

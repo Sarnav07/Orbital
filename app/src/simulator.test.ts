@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   POOL_FEE_PIPS,
   commitPreview,
+  depegStress,
+  singleDepegTrapPrice,
   createSandboxState,
   effectiveRate,
   formatWad,
@@ -90,5 +92,33 @@ describe("Orbital stateful sandbox", () => {
     expect(effectiveRate(undefined, undefined)).toBeNull();
     const preview = previewSwap(createSandboxState(), 0, 1, parseWad("100"));
     expect(effectiveRate(preview, parseWad("100"))).toBeGreaterThan(0.999);
+  });
+
+  it("stress-tests a one-sided depeg: narrow ranges trap first and cap their exposure", () => {
+    const usdt = 1;
+    const usdc = 0;
+    const run = depegStress(usdt, usdc, parseWad("250000"), 40);
+    const trapStep = (range: number) => run.steps.findIndex((step) => !step.interior[range]);
+
+    expect(run.initialExposure.map((share) => share.toFixed(2))).toEqual(["0.25", "0.25", "0.25"]);
+    expect(trapStep(0)).toBeGreaterThanOrEqual(0);
+    expect(trapStep(1)).toBeGreaterThan(trapStep(0));
+    expect(run.steps.every((step) => step.interior[2])).toBe(true);
+    expect(run.stoppedBy).toMatch(/every range/i);
+
+    const last = run.steps.at(-1)!;
+    const atTrap = run.steps[trapStep(0)];
+    // Once trapped, the narrow range stops absorbing USDT; the wide interior range keeps absorbing it.
+    expect(last.exposure[0] - atTrap.exposure[0]).toBeLessThan(0.02);
+    expect(last.exposure[2] - run.steps[trapStep(0)].exposure[2]).toBeGreaterThan(0.1);
+    // Execution rates fall as USDT floods the book: the curve prices the depeg.
+    expect(run.steps[0].rate).toBeGreaterThan(last.rate);
+  });
+
+  it("inverts the single-depeg boundary formula for each range's trap price", () => {
+    expect(singleDepegTrapPrice(1.001)).toBeCloseTo(0.899, 3);
+    expect(singleDepegTrapPrice(1.004)).toBeCloseTo(0.803, 3);
+    expect(singleDepegTrapPrice(1.05)).toBeCloseTo(0.362, 3);
+    expect(singleDepegTrapPrice(1.2)).toBeNull();
   });
 });

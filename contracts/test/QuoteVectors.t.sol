@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {Test} from "forge-std/Test.sol";
 
 import {SegmentedTorus4} from "../src/math/SegmentedTorus4.sol";
+import {RangeLiquidity4} from "../src/math/RangeLiquidity4.sol";
 import {Torus4} from "../src/math/Torus4.sol";
 
 contract SegmentedSwapHarness {
@@ -16,6 +17,14 @@ contract SegmentedSwapHarness {
         uint256 amountIn
     ) external pure returns (SegmentedTorus4.Result memory) {
         return SegmentedTorus4.swapExactIn(state, ticks, reserves, input, output, amountIn);
+    }
+
+    function attribute(Torus4.State memory state, SegmentedTorus4.Tick[] memory ticks, uint256[4] memory reserves)
+        external
+        pure
+        returns (RangeLiquidity4.Attribution[] memory)
+    {
+        return RangeLiquidity4.attribute(state, ticks, reserves);
     }
 }
 
@@ -66,6 +75,32 @@ contract QuoteVectorsTest is Test {
             state = result.state;
             for (uint256 i; i < ticks.length; ++i) {
                 ticks[i].isInterior = result.interiorBitmap & (uint256(1) << i) != 0;
+            }
+            _assertAttribution(harness, json, prefix, state, ticks, reserves);
+        }
+    }
+
+    /// @dev The BigInt port of RangeLiquidity4.attribute must agree to the wei after every step.
+    function _assertAttribution(
+        SegmentedSwapHarness harness,
+        string memory json,
+        string memory prefix,
+        Torus4.State memory state,
+        SegmentedTorus4.Tick[] memory ticks,
+        uint256[4] memory reserves
+    ) private view {
+        RangeLiquidity4.Attribution[] memory ranges = harness.attribute(state, ticks, reserves);
+        assertEq(ranges.length, _count(json, string.concat(prefix, ".attribution")), "range count");
+        for (uint256 r; r < ranges.length; ++r) {
+            string memory range = string.concat(prefix, ".attribution[", vm.toString(r), "]");
+            assertEq(
+                ranges[r].virtualOffset, vm.parseJsonUint(json, string.concat(range, ".virtualOffset")), "virtualOffset"
+            );
+            uint256[4] memory coordinates = _four(vm.parseJsonUintArray(json, string.concat(range, ".coordinates")));
+            uint256[4] memory inventory = _four(vm.parseJsonUintArray(json, string.concat(range, ".realInventory")));
+            for (uint256 i; i < 4; ++i) {
+                assertEq(ranges[r].coordinates[i], coordinates[i], "coordinate");
+                assertEq(ranges[r].realInventory[i], inventory[i], "realInventory");
             }
         }
     }

@@ -27,15 +27,23 @@ Required local tooling is Foundry `v1.7.1`, Python `3.14.6`, Node.js, Git, and M
 | Solvency | A fuzzed invariant over random swaps, deposits, withdrawals and fee collection keeps claims custody ≥ required inventory and the book on the aggregate torus. |
 | Geometry and crossings | Solidity and independent Python tests cover fixed-partition quotes, tick crossing, recovery, invalid states, and precision bounds. |
 | LP accounting | Range-share and fee-book tests cover proportional claims, independent range inventory, dust, and unauthorized-withdrawal boundaries. |
+| Live app | The `/app` Testnet tab quotes with an exact mirror of `beforeSwap`, which reproduces the recorded testnet swap to the wei. `make app-e2e` proves its transaction builders against real contracts. |
 | BigInt replay | The simulator recomputes every recorded transition and rejects any amount or bitmap it cannot reproduce. Solidity and JavaScript assert the same vector file exactly. |
 
-The regression command currently runs 65 Solidity tests (including 2 invariant campaigns), 31 independent Python-reference tests, 11 simulator tests and 20 app tests, plus the app typecheck and production build. [Gas measurements](results/gas-baseline.md) are full swaps through a real PoolManager and router.
+The regression command currently runs:
+- 67 Solidity tests, including 2 invariant campaigns and a differential check against v4 `FullMath`
+- 31 independent Python-reference tests
+- 12 simulator tests
+- 50 app unit/render tests
+- the app typecheck and production build
+
+`make app-e2e` adds 4 real-contract tests against a local anvil deployment, driven by the app's transaction builders. Static-analysis triage is in [results/static-analysis.md](results/static-analysis.md). [Gas measurements](results/gas-baseline.md) are full swaps through a real PoolManager and router.
 
 ## Deployment provenance
 
 The end-to-end recipe is [`DeployOrbitalDemo.s.sol`](../contracts/script/DeployOrbitalDemo.s.sol); [`DeployOrbitalHook.s.sol`](../contracts/script/DeployOrbitalHook.s.sol) deploys only the hook against existing tokens. Both mine the v4 permission-address salt against the CREATE2 factory that performs the deployment, sort tokens canonically and read their decimals. Secrets come only from environment variables.
 
-**Unichain Sepolia (chain 1301), 2026-09-24, source commit `16c86048b72025681748d5f95960b6727d0f51e3`:**
+**Unichain Sepolia (chain 1301), 2026-09-24, source commit `ff686ea6d6794d9294862056951e294fb8bf975c`:**
 
 - Hook `0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888` and fee book: source verified on Blockscout. The router and the four mock tokens are exact matches on Sourcify.
 - Fee book `0xcd548fB545745cBF0beE4454f3c996b649ac38Be`, demo router `0x9EA2eB21BcF6178f1982d94181f6bc88A614dA42`, official PoolManager `0x00B036B58a818B1BC34d502D3fE730Db729e62AC`.
@@ -49,7 +57,7 @@ Addresses, symbols and decimals are in [`contracts/deployments/unichain-sepolia.
 - Fixed demo basket: four mock assets and three configured ranges; this is not a universal stablecoin pool.
 - Exact-input behavior only. Exact-output routing is rejected.
 - A swap that would trap every range (all-boundary continuation) reverts in full.
-- The demo router is v4-core's `PoolSwapTest`; no production router, position manager or wallet UI is included.
+- The demo router is v4-core's `PoolSwapTest`; no production router or position manager is included. The app supports injected browser wallets only (no WalletConnect/mobile).
 - Fees go to ranges interior at swap start, weighted by radius; there is no fee governance or pause authority.
 - The BigInt replayer is an explanatory fixture, not a production price or execution service.
 - No audit, economic review, real-fund deployment, or depeg-exit safety claim is made.

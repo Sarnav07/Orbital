@@ -23,6 +23,8 @@ beforeAll(() => {
     addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
   }) as MediaQueryList);
   window.scrollTo = (() => {}) as typeof window.scrollTo;
+  // The live testnet tab must never reach the network from unit tests.
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline in tests"); }));
 });
 
 beforeEach(() => {
@@ -84,5 +86,34 @@ describe("Orbital landing experience", () => {
     render();
     act(() => link("Read documentation").click());
     expect(location.pathname).toBe("/docs");
+  });
+
+  it("opens /app on the live testnet tab and keeps the sandbox one click away", async () => {
+    history.replaceState({}, "", "/app");
+    // The testnet tab is code-split: warm the module cache so the lazy boundary resolves in one tick.
+    await import("./LiveApp");
+    render();
+    for (let attempt = 0; attempt < 20 && !container.textContent?.includes("Trade the deployed reserve book."); attempt += 1) {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
+    }
+    expect(container.textContent).toContain("Trade the deployed reserve book.");
+    const tab = (name: string) => [...container.querySelectorAll("[role='tab']")].find((node) => node.textContent?.includes(name)) as HTMLButtonElement;
+    expect(tab("Testnet").getAttribute("aria-selected")).toBe("true");
+    act(() => tab("Sandbox").click());
+    expect(container.textContent).toContain("See the reserve book");
+    expect(tab("Sandbox").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("shows the depeg stress model in the sandbox with each range's trap price", async () => {
+    history.replaceState({}, "", "/app");
+    await import("./LiveApp");
+    render();
+    const tab = [...container.querySelectorAll("[role='tab']")].find((node) => node.textContent?.includes("Sandbox")) as HTMLButtonElement;
+    act(() => tab.click());
+    const text = container.textContent ?? "";
+    expect(text).toContain("Depeg stress");
+    expect(text).toMatch(/\$0\.90/);
+    expect(text).toMatch(/\$0\.80/);
+    expect(text).toMatch(/every range/i);
   });
 });

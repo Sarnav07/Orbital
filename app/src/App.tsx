@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   AnimatePresence,
   motion,
@@ -10,10 +10,11 @@ import {
 } from "motion/react";
 import { replay } from "../../packages/simulator/src/replay.js";
 import fixture from "../../packages/fixtures/segmented-wad-v1.json";
-import deployment from "../../contracts/deployments/unichain-sepolia.json";
+import { DEPLOYMENT as deployment, EXPLORER, LIVE_SWAP_TX } from "./chain/deployment";
 import {
   commitPreview,
   createSandboxState,
+  depegStress,
   effectiveRate as rateFor,
   formatWad,
   interiorBitmap as bitmapForTicks,
@@ -24,6 +25,7 @@ import {
   quoteMessage,
   sampleCurve,
   simulatorAssets,
+  singleDepegTrapPrice,
   type CurvePoint,
   type QuotePreview,
   type Tick,
@@ -70,9 +72,9 @@ export const chapters = [
   ["06 / 06", "Settle at the hook", "The hook takes each exact-input route as PoolManager claims, pays the output from the shared book, and returns the v4 custom delta. Ranges enter and exit through the hook, never native v4 positions.", "BEFORESWAP DELTA"],
 ] as const;
 
-const EXPLORER = "https://unichain-sepolia.blockscout.com";
 const explorerAddress = (address: string) => ({ address, href: `${EXPLORER}/address/${address}` });
-const LIVE_SWAP_TX = "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46";
+// viem and the wallet flow load only when someone opens the testnet tab.
+const LiveApp = lazy(() => import("./LiveApp").then((module) => ({ default: module.LiveApp })));
 
 /** The recorded Unichain Sepolia deployment (contracts/deployments/unichain-sepolia.json). */
 export const liveDeployment = {
@@ -87,7 +89,7 @@ export const liveDeployment = {
 const shortHex = (value: string) => `${value.slice(0, 6)}…${value.slice(-4)}`;
 
 function LiveDeployment() {
-  return <section className="live-deployment" aria-labelledby="live-deployment-title"><div><p className="section-index">UNICHAIN SEPOLIA · CHAIN {liveDeployment.chainId}</p><h3 id="live-deployment-title">The hook is live on testnet.</h3><p>Mock basket, unaudited prototype. The sandbox above uses the same ranges and fee as this deployment.</p><a className="button button-light" href={liveDeployment.swapTx.href} target="_blank" rel="noreferrer">View a live swap ↗</a></div><dl>
+  return <section className="live-deployment" aria-labelledby="live-deployment-title"><div><p className="section-index">UNICHAIN SEPOLIA · CHAIN {liveDeployment.chainId}</p><h3 id="live-deployment-title">Deployed contracts.</h3><p>Mock basket, unaudited prototype. The testnet tab trades these contracts; the sandbox models the same ranges and fee locally.</p><a className="button button-light" href={liveDeployment.swapTx.href} target="_blank" rel="noreferrer">View a live swap ↗</a></div><dl>
     <dt>OrbitalV4Hook</dt><dd><a href={liveDeployment.hook.href} target="_blank" rel="noreferrer">{shortHex(liveDeployment.hook.address)}</a></dd>
     <dt>Swap router</dt><dd><a href={liveDeployment.router.href} target="_blank" rel="noreferrer">{shortHex(liveDeployment.router.address)}</a></dd>
     <dt>PoolManager</dt><dd><a href={liveDeployment.poolManager.href} target="_blank" rel="noreferrer">{shortHex(liveDeployment.poolManager.address)}</a></dd>
@@ -431,19 +433,60 @@ function LaunchSimulator() {
       </article>
     </div>
     <div className="sim-history" aria-live="polite"><p>COMMITTED SANDBOX TRANSITIONS</p>{history.length ? history.map((entry, index) => <span key={`${entry.input}-${entry.output}-${index}`}>{assets[entry.input]} → {assets[entry.output]} · {displayWad(entry.amountIn)} in · {displayWad(entry.amountOut)} out · {entry.crossings} crossings</span>) : <span>No local swaps committed. The initial demo basket remains active.</span>}</div>
+    <StressPanel />
     <div className="sim-trace"><div><p className="section-index">VERIFICATION TRACE</p><h3>Replay the committed crossing fixture.</h3><p>The deterministic trace below remains separate from the interactive sandbox and verifies the versioned WAD transition exactly.</p></div><ReplayPanel /></div>
   </section>;
+}
+
+const STRESS_STEPS = [100_000n, 250_000n, 500_000n];
+
+function StressPanel() {
+  const [pressured, setPressured] = useState(1);
+  const [stepUnits, setStepUnits] = useState(250_000n);
+  const against = pressured === 0 ? 1 : 0;
+  const run = useMemo(() => depegStress(pressured, against, stepUnits * (10n ** 18n), 40), [pressured, against, stepUnits]);
+  const ranges = createSandboxState().ticks.map((tick) => Number(tick.k * 1000n / tick.radius) / 1000);
+  return <div className="stress-panel" aria-labelledby="stress-title">
+    <div className="stress-heading"><p className="section-index">DEPEG STRESS · MODEL</p><h3 id="stress-title">Depeg stress: who absorbs a failing coin?</h3><p>Sell {simulatorAssets[pressured]} into the demo book for {simulatorAssets[against]} in equal steps. Each range trades until the pressured coin reaches its boundary. Once trapped, a range stops taking in {simulatorAssets[pressured]}, which caps its exposure; wider ranges keep absorbing. This is a model on the deployed parameters, not a guarantee that LPs are protected.</p></div>
+    <div className="stress-controls">
+      <div className="asset-picker"><span>PRESSURED COIN</span><div>{simulatorAssets.map((asset, index) => <button type="button" key={asset} className={pressured === index ? "asset-choice active" : "asset-choice"} aria-pressed={pressured === index} onClick={() => setPressured(index)}>{asset}</button>)}</div></div>
+      <div className="asset-picker"><span>STEP SIZE</span><div>{STRESS_STEPS.map((units) => <button type="button" key={String(units)} className={stepUnits === units ? "asset-choice active" : "asset-choice"} aria-pressed={stepUnits === units} onClick={() => setStepUnits(units)}>{compactWad(units * (10n ** 18n))}</button>)}</div></div>
+    </div>
+    <div className="stress-legend">{ranges.map((ratio, index) => {
+      const price = singleDepegTrapPrice(ratio);
+      return <span key={index}><b>RANGE {index + 1}</b> k/r {ratio.toFixed(3)} · {price === null ? "never traps on a single-coin depeg" : `traps near $${price.toFixed(2)} if one coin depegs`}</span>;
+    })}</div>
+    <div className="stress-table" role="table" aria-label="Depeg stress steps">
+      <div role="row" className="stress-head"><span>SOLD</span><span>STEP RATE</span>{ranges.map((_, index) => <span key={index}>RANGE {index + 1} · {simulatorAssets[pressured]} SHARE</span>)}</div>
+      <div role="row"><span>0</span><span>—</span>{run.initialExposure.map((share, index) => <span key={index} className="stress-cell"><i style={{ width: `${Math.round(share * 100)}%` }} />{(share * 100).toFixed(1)}%</span>)}</div>
+      {run.steps.map((step) => <div role="row" key={String(step.soldTotal)}>
+        <span>{compactWad(step.soldTotal)}</span>
+        <span>{step.rate.toFixed(4)}</span>
+        {step.exposure.map((share, index) => <span key={index} className={step.interior[index] ? "stress-cell" : "stress-cell trapped"}><i style={{ width: `${Math.round(share * 100)}%` }} />{(share * 100).toFixed(1)}%{step.interior[index] ? "" : " · trapped"}</span>)}
+      </div>)}
+    </div>
+    <p className="stress-stop">{run.stoppedBy ?? `Stopped after ${run.steps.length} steps.`}</p>
+  </div>;
 }
 
 function SandboxTeaser({ navigate }: { navigate: Navigate }) {
   return <section className="sandbox-teaser" id="explorer"><div><p className="section-index">/ 08 · Launch sandbox</p><h2>Trade the shared<br /><em>reserve book.</em></h2><p>Choose any canonical pair and watch a local exact-input quote advance one four-asset state.</p><a className="button button-light" href="/app" onClick={(event) => { event.preventDefault(); navigate("app"); }}>Open sandbox ↗</a></div><div className="teaser-book" aria-label="Initial sandbox reserve state">{simulatorAssets.map((asset, index) => <span key={asset}><i />{asset}<b>{compactWad(createSandboxState().reserves[index])}</b></span>)}<small>4 ASSETS · 6 CANONICAL PAIRS · BIGINT MODEL</small></div></section>;
 }
 
+type AppTab = "testnet" | "sandbox";
+
 function LaunchApp({ navigate }: { navigate: Navigate }) {
-  return <main className="launch-app"><header className="launch-nav"><button className="launch-brand" type="button" onClick={() => navigate("home")}><OrbitalMark /><span>orbital</span></button><nav><button type="button" onClick={() => navigate("home")}>Protocol</button><button type="button" onClick={() => navigate("docs")}>Docs</button></nav><span className="sandbox-status"><i /> Sandbox active</span></header>
-    <LaunchSimulator />
+  const [tab, setTab] = useState<AppTab>("testnet");
+  const tabButton = (id: AppTab, label: string) => <button type="button" role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>;
+  return <main className="launch-app"><header className="launch-nav"><button className="launch-brand" type="button" onClick={() => navigate("home")}><OrbitalMark /><span>orbital</span></button><nav><button type="button" onClick={() => navigate("home")}>Protocol</button><button type="button" onClick={() => navigate("docs")}>Docs</button></nav><span className="sandbox-status"><i /> {tab === "testnet" ? "Unichain Sepolia" : "Sandbox active"}</span></header>
+    <div className="app-tabs" role="tablist" aria-label="App mode">{tabButton("testnet", "Testnet · live contracts")}{tabButton("sandbox", "Sandbox · local model")}</div>
+    <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+      {tab === "testnet"
+        ? <section className="testnet-section"><Suspense fallback={<p className="quote-note">Loading the live app…</p>}><LiveApp /></Suspense></section>
+        : <LaunchSimulator />}
+    </div>
     <LiveDeployment />
-    <footer className="launch-footer"><span>Local model of the Unichain Sepolia hook · no wallet connection</span><button type="button" onClick={() => navigate("home")}>Back to landing ↑</button></footer></main>;
+    <footer className="launch-footer"><span>Unichain Sepolia testnet · mock tokens · unaudited prototype</span><button type="button" onClick={() => navigate("home")}>Back to landing ↑</button></footer></main>;
 }
 
 function FooterCta({ navigate }: { navigate: Navigate }) {

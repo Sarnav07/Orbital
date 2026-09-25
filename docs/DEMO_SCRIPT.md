@@ -26,11 +26,11 @@ Show the app hero. Say: "Four stablecoins create six pair pools. The usual desig
 
 ### 0:20–0:55: a real swap through the hook
 
-Open the [live Unichain Sepolia swap](https://unichain-sepolia.blockscout.com/tx/0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46) on Blockscout, or run a fresh one, then show `hook.reserves()` before and after. Say: "This USDC→DAI swap went through the real v4 PoolManager. The hook converted six-decimal USDC to the shared WAD book, charged 0.05%, minted the input as manager claims and burned DAI claims to pay out. Only the USDC and DAI coordinates of the one shared book moved."
+Open `/app` (Testnet tab) with a funded wallet. Connect, mint test tokens if needed, quote 1,000 USDC → DAI, approve, then swap. Open the transaction on Blockscout and point at the book panel updating. As a fallback, show the [recorded live swap](https://unichain-sepolia.blockscout.com/tx/0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46). Say: "This USDC→DAI swap went through the real v4 PoolManager. The hook converted six-decimal USDC to the shared WAD book, charged 0.05%, minted the input as manager claims and burned DAI claims to pay out. Only the USDC and DAI coordinates of the one shared book moved."
 
-### 0:55–1:35: sandbox and tick crossing
+### 0:55–1:35: sandbox, tick crossing and depeg stress
 
-Open `/app`. Quote 1,000 USDC→DAI (≈999.43 out), then 1.5M to show a tick crossing and the narrow range turning `BOUNDARY`. Say: "This is the same BigInt engine the contracts are checked against. Narrow ranges hold far less real inventory for the same depth near the peg. Under pressure they trap at their boundary instead of absorbing unbounded loss."
+Switch to the Sandbox tab. Quote 1.5M USDC → DAI to show a tick crossing and the narrow range turning `BOUNDARY`. Scroll to **Depeg stress** with USDT selected: the narrow ranges trap near $0.90 and $0.80, and their USDT share stops growing while the wide range keeps absorbing. Say: "This is the same BigInt engine the contracts are checked against. Narrow ranges hold far less real inventory for the same depth near the peg. Under pressure they trap at their boundary instead of absorbing unbounded loss."
 
 ### 1:35–2:15: evidence
 
