@@ -13,8 +13,8 @@
     6
   ],
   "fee": 500,
-  "feeBook": "0xcd548fB545745cBF0beE4454f3c996b649ac38Be",
-  "hook": "0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888",
+  "feeBook": "0xCB8822F09717e40F340183DDE97e544b4A2c7ae1",
+  "hook": "0x5fe242b3544Dd0d30C395843dE75A2B8d4dBA888",
   "poolManager": "0x00B036B58a818B1BC34d502D3fE730Db729e62AC",
   "router": "0x9EA2eB21BcF6178f1982d94181f6bc88A614dA42",
   "symbols": [
@@ -24,6 +24,12 @@
     "USDC"
   ],
   "tickSpacing": 60,
-  "deployBlock": 63408440,
-  "liveSwapTx": "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46"
+  "deployBlock": 63593860,
+  "liveSwapTx": "0x59f6dfa946fe47b2e008c5b376af9d389113f1e298df6dcd568afea3b8d840b2",
+  "supersedes": {
+    "hook": "0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888",
+    "feeBook": "0xcd548fB545745cBF0beE4454f3c996b649ac38Be",
+    "deployBlock": 63408440,
+    "liveSwapTx": "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46"
+  }
 }

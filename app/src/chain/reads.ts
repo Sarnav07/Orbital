@@ -3,7 +3,7 @@ import { hookAbi, tokenAbi } from "./abi";
 import { deployBlockOf, type Deployment } from "./config";
 import type { QuoteBook } from "./quote";
 
-export type ReadClient = Pick<PublicClient, "readContract" | "simulateContract" | "getLogs" | "getBlockNumber" | "getBlock">;
+export type ReadClient = Pick<PublicClient, "readContract" | "simulateContract" | "getLogs" | "getBlockNumber" | "getBlock" | "getTransaction">;
 export type LiveBook = QuoteBook & {
   custody: bigint[];
   required: bigint[];
@@ -105,6 +105,18 @@ async function logsIn(client: ReadClient, deployment: Deployment, fromBlock: big
 }
 
 /** Swaps mined in [fromBlock, toBlock], oldest first, read in RPC-sized windows. */
+/**
+ * Who sent each swap transaction (the swap event itself only records the router).
+ * Each distinct hash is read once; a lookup that fails is simply left out.
+ */
+export async function readSenders(client: ReadClient, hashes: readonly Hash[]): Promise<Record<string, Address>> {
+  const unique = [...new Set(hashes)];
+  const results = await Promise.allSettled(unique.map((hash) => client.getTransaction({ hash })));
+  const senders: Record<string, Address> = {};
+  results.forEach((result, index) => { if (result.status === "fulfilled") senders[unique[index]] = result.value.from; });
+  return senders;
+}
+
 export async function readSwapsBetween(client: ReadClient, deployment: Deployment, fromBlock: bigint, toBlock: bigint) {
   const swaps: RecentSwap[] = [];
   for (let start = fromBlock; start <= toBlock; start += LOG_WINDOW) {

@@ -56,6 +56,6 @@ describe("wallet discovery and network guard", () => {
     const added = calls.find((call) => call.method === "wallet_addEthereumChain")!.params[0];
     expect(added.chainName).toBe("Arc Testnet");
     expect(added.nativeCurrency.symbol).toBe("USDC");
-    expect(added.blockExplorerUrls[0]).toBe("https://testnet.arcscan.app");
+    expect(added.blockExplorerUrls[0]).toBe("https://explorer.testnet.arc.io");
   });
 });

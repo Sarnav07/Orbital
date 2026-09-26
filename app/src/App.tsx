@@ -4,12 +4,12 @@ import {
   motion,
   useReducedMotion,
   useScroll,
-  useSpring,
   useTransform,
   type MotionValue,
 } from "motion/react";
 import { DEPLOYMENT as deployment, EXPLORER, LIVE_SWAP_TX } from "./chain/deployment";
 import { DocsPage } from "./DocsPage";
+import { OrbitalLogo } from "./ui/OrbitalLogo";
 import { Orbs } from "./ui/Orbs";
 import { ThemeMenu } from "./ui/ThemeMenu";
 import { compactWad, createSandboxState, simulatorAssets } from "./simulator";
@@ -125,9 +125,6 @@ function useRoute(): [Route, Navigate] {
   return [route, navigate];
 }
 
-function OrbitalMark() {
-  return <span className="orbital-mark" aria-hidden="true"><i /><i /><i /><b /></span>;
-}
 
 function Preloader({ done }: { done: () => void }) {
   const reduced = useReducedMotion();
@@ -137,7 +134,7 @@ function Preloader({ done }: { done: () => void }) {
   }, [done, reduced]);
   return <motion.div className="preloader" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
     <div className="preloader-grid" />
-    <div className="preloader-content"><OrbitalMark /><p>WELCOME TO ORBITAL</p><span>INITIALIZING SHARED RESERVE GEOMETRY</span></div>
+    <div className="preloader-content"><OrbitalLogo className="orbital-mark" /><p>WELCOME TO ORBITAL</p><span>INITIALIZING SHARED RESERVE GEOMETRY</span></div>
   </motion.div>;
 }
 
@@ -153,7 +150,7 @@ function Nav({ route, navigate }: { route: Route; navigate: Navigate }) {
   }, []);
   return <header className={scrolled ? "site-nav is-scrolled" : "site-nav"}>
     <div className="site-nav-left">
-      <a className="site-brand" href="/" onClick={(event) => { event.preventDefault(); navigate("home"); }}><OrbitalMark /><span>Orbital</span></a>
+      <a className="site-brand" href="/" onClick={(event) => { event.preventDefault(); navigate("home"); }}><OrbitalLogo className="orbital-mark" /><span>Orbital</span></a>
       <button className="site-menu-button" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>Menu</button>
       <nav className={open ? "site-links is-open" : "site-links"} aria-label="Primary navigation">
         <a href="/#protocol" onClick={(event) => { if (route !== "home") { event.preventDefault(); navigate("home", "protocol"); } setOpen(false); }}>Protocol</a>
@@ -198,37 +195,47 @@ function Hero({ navigate }: { navigate: Navigate }) {
   </section>;
 }
 
+/** Scroll window over which word `index` fades in: compressed so the whole sentence is white before its section scrolls away. */
+export const revealRange = (index: number, total: number): [number, number] => {
+  const start = (index / total) * .75;
+  return [start, start + .15];
+};
+
+/** Shared in-view entrance: starts just before a card enters, so it never pops in late. */
+const inView = { initial: { opacity: 0, y: 12 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "0px 0px 15% 0px" }, transition: { duration: .35 } } as const;
+
 function RevealedWord({ word, index, total, progress }: { word: string; index: number; total: number; progress: MotionValue<number> }) {
-  const start = index / total;
-  const opacity = useTransform(progress, [start, Math.min(1, start + .07)], [.14, 1]);
+  const opacity = useTransform(progress, revealRange(index, total), [.14, 1]);
   return <motion.span style={{ opacity }}>{word}{" "}</motion.span>;
 }
 
 function Manifesto() {
-  const ref = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
+  const ref = useRef<HTMLParagraphElement>(null);
+  // Same treatment as Mechanics: a normal section whose words brighten as the sentence itself crosses the screen.
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 85%", "end 50%"] });
   const words = manifesto.split(" ");
-  return <section ref={ref} className="manifesto" aria-labelledby="thesis-title"><div className="manifesto-sticky">
-    <div className="manifesto-copy"><p className="section-index">/ 01 · The thesis</p><p id="thesis-title" className="manifesto-text">{words.map((word, index) => <RevealedWord key={`${word}-${index}`} word={word} index={index} total={words.length} progress={scrollYProgress} />)}</p></div>
-  </div></section>;
+  return <section className="manifesto" aria-labelledby="thesis-title">
+    <div className="manifesto-copy"><p className="section-index">/ 01 · The thesis</p><p ref={ref} id="thesis-title" className="manifesto-text">{words.map((word, index) => <RevealedWord key={`${word}-${index}`} word={word} index={index} total={words.length} progress={scrollYProgress} />)}</p></div>
+  </section>;
 }
 
 function Problem({ navigate }: { navigate: Navigate }) {
   return <section className="problem-section" id="problem" aria-labelledby="problem-title">
-    <div className="problem-heading"><p className="section-index">/ 02 · The problem</p><h2 id="problem-title">Stablecoins share a peg. <em>Pair pools split the state.</em></h2><p>Orbital starts from one question: can n stablecoins share a single reserve book behind all n(n − 1)/2 of their pair pools? This build answers it for four, live on Unichain Sepolia.</p></div>
-    <div className="problem-grid">{problemCards.map(([index, metric, title, equation, line, docsId]) => <motion.article className="problem-card" key={index} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-80px" }} transition={{ duration: .55 }}><div className="card-rule"><span>{index}</span><b>{metric}</b></div><h3>{title}</h3><div className="equation" aria-hidden="true">{equation}</div><p className="problem-lead">{line}</p><DocsLink id={docsId} navigate={navigate} /></motion.article>)}</div>
+    <div className="problem-heading"><p className="section-index">/ 02 · The problem</p><h2 id="problem-title">Stablecoins share a peg. <em>Pair pools split the state.</em></h2><p>Orbital starts from one question: can n stablecoins share a single reserve book behind all n(n − 1)/2 of their pair pools? This build answers it for four, live on four testnets.</p></div>
+    <div className="problem-grid">{problemCards.map(([index, metric, title, equation, line, docsId]) => <motion.article className="problem-card" key={index} {...inView}><div className="card-rule"><span>{index}</span><b>{metric}</b></div><h3>{title}</h3><div className="equation" aria-hidden="true">{equation}</div><p className="problem-lead">{line}</p><DocsLink id={docsId} navigate={navigate} /></motion.article>)}</div>
   </section>;
 }
 
 function Geometry() {
-  const ref = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 78%", "end 48%"] });
+  const ref = useRef<HTMLHeadingElement>(null);
+  // Track the sentence itself, not the whole section, so it is fully white while still on screen.
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 85%", "end 50%"] });
   const words = geometryStatement.split(" ");
-  return <section ref={ref} className="geometry-section" id="geometry" aria-labelledby="geometry-title"><div className="geometry-heading"><p className="section-index">/ 03 · Mechanics</p></div><div className="geometry-statement"><h2 id="geometry-title">{words.map((word, index) => <RevealedWord key={`${word}-${index}`} word={word} index={index} total={words.length} progress={scrollYProgress} />)}</h2></div><div className="geometry-grid">{geometryCards.map(([index, metric, title, equation, text]) => <motion.article className="geometry-panel" key={index} initial={{ opacity: 0, y: 22 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-80px" }} transition={{ duration: .55 }}><div className="card-rule"><span>{index}</span><b>{metric}</b></div><h3>{title}</h3><div className="equation equation-large" aria-hidden="true">{equation}</div><p>{text}</p></motion.article>)}</div></section>;
+  return <section className="geometry-section" id="geometry" aria-labelledby="geometry-title"><div className="geometry-heading"><p className="section-index">/ 03 · Mechanics</p></div><div className="geometry-statement"><h2 ref={ref} id="geometry-title">{words.map((word, index) => <RevealedWord key={`${word}-${index}`} word={word} index={index} total={words.length} progress={scrollYProgress} />)}</h2></div><div className="geometry-grid">{geometryCards.map(([index, metric, title, equation, text]) => <motion.article className="geometry-panel" key={index} {...inView}><div className="card-rule"><span>{index}</span><b>{metric}</b></div><h3>{title}</h3><div className="equation equation-large" aria-hidden="true">{equation}</div><p>{text}</p></motion.article>)}</div></section>;
 }
 
 function HomePrinciples() {
-  return <section className="home-principles" id="principles" aria-labelledby="principles-title"><div className="principles-intro"><p className="section-index">/ 04 · Principles</p><h2 id="principles-title">Three rules make the <em>prototype legible.</em></h2><p>Shared state, range-local claims, and recorded transitions give every supported route the same accounting surface without hiding the current implementation boundary.</p></div><div className="principles-rows">{homePrinciples.map(([letter, title, text, note]) => <motion.article className="principle-row" key={letter} initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true, margin: "-80px" }} transition={{ duration: .55 }}><span>{letter}</span><h3>{title}</h3><div><p>{text}</p><small>{note}</small></div></motion.article>)}</div></section>;
+  return <section className="home-principles" id="principles" aria-labelledby="principles-title"><div className="principles-intro"><p className="section-index">/ 04 · Principles</p><h2 id="principles-title">Three rules make the <em>prototype legible.</em></h2><p>Shared state, range-local claims, and recorded transitions give every supported route the same accounting surface without hiding the current implementation boundary.</p></div><div className="principles-rows">{homePrinciples.map(([letter, title, text, note]) => <motion.article className="principle-row" key={letter} {...inView}><span>{letter}</span><h3>{title}</h3><div><p>{text}</p><small>{note}</small></div></motion.article>)}</div></section>;
 }
 
 /** "Learn more →" to a /docs section, routed client-side. */
@@ -236,8 +243,19 @@ function DocsLink({ id, navigate }: { id: string; navigate: Navigate }) {
   return <a className="card-more" href={`/docs#${id}`} onClick={(event) => { event.preventDefault(); navigate("docs", id); }}>Learn more →</a>;
 }
 
+// Four coins, each wired straight to the one shared reserve book in the middle.
+const bookChips = assets.map((asset, index) => ({ asset, x: index % 2 ? 250 : 70, y: index < 2 ? 30 : 110 }));
+
+function BookHub() {
+  return <svg viewBox="0 0 320 140" preserveAspectRatio="xMidYMid meet">
+    {bookChips.map(({ asset, x, y }) => <line key={asset} x1={x} y1={y} x2={160} y2={70} />)}
+    {bookChips.map(({ asset, x, y }) => <g className="book-chip" key={asset}><rect x={x - 34} y={y - 13} width={68} height={26} rx={8} /><text x={x} y={y + 4}>{asset}</text></g>)}
+    <g className="book-hub"><rect x={112} y={55} width={96} height={30} rx={15} /><text x={160} y={74}>ONE BOOK</text></g>
+  </svg>;
+}
+
 function CardVisual({ variant }: { variant: string }) {
-  if (variant === "book") return <div className="book-visual" aria-hidden="true">{assets.map((asset) => <span key={asset}>{asset}</span>)}<b>ONE<br />BOOK</b></div>;
+  if (variant === "book") return <div className="book-visual" aria-hidden="true"><BookHub /></div>;
   if (variant === "geometry") return <div className="geometry-visual" aria-hidden="true"><i /><i /><i /><b>SPHERE4</b><span>TORUS4</span></div>;
   if (variant === "range") return <div className="range-visual" aria-hidden="true"><i /><i /><b>PEG RANGE</b><span>LP BOUND</span></div>;
   if (variant === "ticks") return <div className="flow-visual" aria-hidden="true"><span>INTERIOR</span><b>→</b><span>BOUNDARY</span><b>→</b><span>RECOVERY</span></div>;
@@ -260,23 +278,37 @@ export const architecture = [
 function Architecture({ navigate }: { navigate: Navigate }) {
   const ref = useRef<HTMLElement>(null);
   const track = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   // How far the track must travel so the last card stops fully in view; measured, not guessed.
   const [distance, setDistance] = useState(0);
+  // The pinned frame is only as tall as its content, so no empty band is left behind when it unpins.
+  const [frameHeight, setFrameHeight] = useState(0);
+  // Page scroll at which the frame pins; the track then slides 1:1 for `distance` pixels while pinned.
+  const [pinStart, setPinStart] = useState(0);
   useEffect(() => {
     const measure = () => {
       const node = track.current;
       if (!node) return;
       // scrollWidth already includes both side paddings, so the last card ends one gutter from the right edge.
       setDistance(Math.max(0, node.scrollWidth - window.innerWidth));
+      const height = frame.current?.offsetHeight ?? 0;
+      setFrameHeight(height);
+      const section = ref.current;
+      // Must match the CSS sticky top: max(72px, (100svh − frame) / 2).
+      if (section) setPinStart(section.getBoundingClientRect().top + window.scrollY - Math.max(72, (window.innerHeight - height) / 2));
     };
     measure();
     addEventListener("resize", measure);
-    return () => removeEventListener("resize", measure);
+    // Sections above can change height after load (fonts, lazy content), which moves where the pin starts.
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    return () => { removeEventListener("resize", measure); observer.disconnect(); };
   }, []);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
-  const x = useSpring(useTransform(scrollYProgress, [0, 1], [0, -distance]), { stiffness: 120, damping: 28 });
-  return <section ref={ref} className={reduced ? "architecture reduced" : "architecture"} style={{ "--arch-distance": `${distance}px` } as React.CSSProperties} aria-labelledby="architecture-title"><div className="architecture-sticky">
+  const { scrollY } = useScroll();
+  // Direct 1:1 mapping over exactly the pinned stretch: a spring lags the wheel and overshoots, which reads as a stuck scroll.
+  const x = useTransform(scrollY, [pinStart, pinStart + distance], [0, -distance]);
+  return <section ref={ref} className={reduced ? "architecture reduced" : "architecture"} style={{ "--arch-distance": `${distance}px`, "--arch-frame": `${frameHeight}px` } as React.CSSProperties} aria-labelledby="architecture-title"><div ref={frame} className="architecture-sticky">
     <div className="architecture-title"><p className="section-index">/ 06 · Architecture</p><h2 id="architecture-title">One hook, <em>shared settlement.</em></h2></div>
     <motion.div ref={track} className="architecture-track" style={reduced ? {} : { x }}>{architecture.map(([number, title, line, labels, docsId]) => <article className="architecture-card" key={number}><div><p className="card-number">/ {number} · Feature</p><h3>{title}</h3><p>{line}</p><DocsLink id={docsId} navigate={navigate} /></div><div className="architecture-machine">{labels.map((label, index) => <span key={label}>{index > 0 && <i>↓</i>}{label}</span>)}</div></article>)}</motion.div>
   </div></section>;
@@ -306,7 +338,7 @@ function LaunchApp({ navigate }: { navigate: Navigate }) {
 }
 
 function FooterCta({ navigate }: { navigate: Navigate }) {
-  return <><section className="gateway" id="gateway"><span aria-hidden="true">ORBITAL</span><div><p className="section-index">/ 09 · Gateway</p><h2>The reserve book<br /><em>is taking shape.</em></h2><p>Read the protocol guide, then trade the live 4-coin book on Unichain Sepolia.</p><a className="button button-light" href="/docs" onClick={(event) => { event.preventDefault(); navigate("docs"); }}>Read documentation ↗</a></div></section><footer><span>© 2026 Orbital</span><span>Prototype · Not audited · Live on Unichain Sepolia testnet</span></footer></>;
+  return <><section className="gateway" id="gateway"><span aria-hidden="true">ORBITAL</span><div><p className="section-index">/ 09 · Gateway</p><h2>The reserve book<br /><em>is taking shape.</em></h2><p>Read the protocol guide, then trade the live 4-coin book on any of four testnets.</p><a className="button button-light" href="/docs" onClick={(event) => { event.preventDefault(); navigate("docs"); }}>Read documentation ↗</a></div></section><footer><span>© 2026 Orbital</span><span>Prototype · Not professionally audited · Live on 4 testnets</span></footer></>;
 }
 
 function Home({ navigate }: { navigate: Navigate }) { return <><Hero navigate={navigate} /><Manifesto /><Problem navigate={navigate} /><Geometry /><HomePrinciples /><Principles navigate={navigate} /><Architecture navigate={navigate} /><SharedHookMap /><SandboxTeaser navigate={navigate} /><FooterCta navigate={navigate} /></>; }

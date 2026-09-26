@@ -1,8 +1,8 @@
 # Static analysis
 
-- **Tool:** Slither 0.11.6 (102 detectors), run on 2026-09-25 against `contracts/src` at the deployed source revision.
-- **Result:** 55 results. One true positive (SA-1) was found, and the tool mislabeled it. It is graded **Low**, because it fails closed and cannot be reached within the protocol's arithmetic bounds.
-- **High/Medium:** no true positive. The deployed contracts are unchanged.
+- **Tool:** Slither 0.11.6 (102 detectors), first run on 2026-09-25 against `contracts/src`. It was re-run on 2026-09-26 against the audited source that is now deployed ([AUDIT.md](../AUDIT.md)).
+- **Result:** 55 results both times. One true positive (SA-1) was found, and the tool mislabeled it. It was graded **Low** (fail-closed, unreachable within the protocol's bounds) and is now **fixed**. The `incorrect-exp` line it pointed at stays in the output as a false positive.
+- **High/Medium:** no true positive. Slither did not flag the High engine bug the manual review found (audit finding C-1, a crossing-detection logic error). A static analyzer cannot see it, which is why the review also used proof-of-concept tests.
 
 ```sh
 cd contracts
@@ -21,7 +21,7 @@ slither . --filter-paths "lib/|test/|script/" --exclude-dependencies
 | Low | `timestamp` | 1 | Accepted: user-chosen swap/liquidity deadlines. Validator skew of seconds is irrelevant at that granularity. |
 | Info / Optimization | `assembly`, `low-level-calls`, `cyclomatic-complexity`, `cache-array-length` | 8 | Noted; no change. |
 
-## SA-1 · `FixedPointMath.mulDivDown` wide-product branch reverts (Low, true positive)
+## SA-1 · `FixedPointMath.mulDivDown` wide-product branch reverts (Low, true positive, fixed)
 
 **Where:** `contracts/src/math/FixedPointMath.sol:44-54`.
 
@@ -39,7 +39,7 @@ slither . --filter-paths "lib/|test/|script/" --exclude-dependencies
   - Liquidity scaling multiplies a radius of at most `1e29` by a share count. Reaching `2^256` would need more than `1e48` shares, a deposit the pool would reject anyway.
   - Fee growth uses Q128 per share with radius-weighted allocation. The checkpoint product stays below `2^256` unless cumulative fees in one asset exceed about `3e38` raw units. With engine-bounded swap sizes, that would take on the order of `1e13` swaps.
 
-**Fix, deferred to the next deployment:** wrap the wide branch (from the `twos` computation through the return) in `unchecked`, matching `FullMath`. Then change the known-issue test to assert equality. It is deferred so the Unichain Sepolia bytecode keeps matching its recorded source commit (`ff686ea`).
+**Fixed (2026-09-26, audit finding C-2):** the wide branch, from the `twos` computation through the return, now sits in `unchecked`, matching `FullMath`. The former known-issue test is replaced by `testWideProductBranchMatchesFullMath` and `testFuzzWideProductsMatchFullMath`, which assert equality with `FullMath` for products of at least 2^256. Both reverted with `Panic(0x11)` before the fix. The fixed library is part of the redeployed hooks.
 
 ## SA-2 · `array-by-reference` in `beforeSwap` (false positive)
 
@@ -53,7 +53,7 @@ slither . --filter-paths "lib/|test/|script/" --exclude-dependencies
 
 ## SA-4 · Events after external calls (accepted)
 
-`seed`, `addLiquidity`, `removeLiquidity`, `collectFees` and `beforeSwap` emit their event after calling the PoolManager and the fee book. All state changes happen before those calls, following checks-effects-interactions.
+`seed`, `addLiquidity`, `removeLiquidity`, `collectFees` and `beforeSwap` emit their event after calling the PoolManager and the fee book. The hook's own state changes happen before the PoolManager calls. The one exception is `collectFees`: it lowers `_feeLiability` after `feeBook.collect` returns the amounts, because only the fee book knows them. The fee book is created by the hook and calls nothing else. There is no reentrancy guard; safety rests on this ordering and on the PoolManager lock.
 
 A reentrant call cannot exploit the ordering:
 - The external calls go to the PoolManager (trusted), the hook-owned fee book, and the four registered mock tokens.
@@ -61,6 +61,6 @@ A reentrant call cannot exploit the ordering:
 
 ## Not covered
 
-This is automated static analysis, not an audit.
+This is automated static analysis. The manual review, its proof-of-concept tests and fixes are in [AUDIT.md](../AUDIT.md).
 - Economic properties are exercised by tests, not proven: LP fairness across ranges, the depeg behaviour of fee policy, and JIT liquidity.
 - Numerical-solver error bounds are likewise exercised by tests but not proven.

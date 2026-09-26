@@ -219,6 +219,24 @@ function nextCrossing(ticks, oldAlpha, newAlpha) {
   return { found, lambda };
 }
 
+// Mirrors SegmentedTorus4._flipSettled: a range already at (or by rounding past) its plane in
+// the direction of travel flips before any trade, so a trade that ended exactly on a plane
+// cannot leave a range interior past its bound or boundary inside its band.
+function flipSettled(ticks, oldAlpha, newAlpha) {
+  if (newAlpha === oldAlpha) return 0;
+  const rising = newAlpha > oldAlpha;
+  let flips = 0;
+  for (const tick of ticks) {
+    if (tick.isInterior !== rising) continue;
+    const lambda = divWadDown(tick.k, tick.radius);
+    if (rising ? lambda <= oldAlpha : lambda >= oldAlpha) {
+      tick.isInterior = !rising;
+      flips += 1;
+    }
+  }
+  return flips;
+}
+
 function quoteToBoundary(state, reserves, input, output, remaining, lambda) {
   const targetAlphaInterior = mulWadDown(state.rInterior, lambda);
   const targetSum = 2n * (targetAlphaInterior + state.kBoundary);
@@ -302,6 +320,13 @@ export function quoteExactIn({ state: stateValue, ticks: ticksValue, reserves: r
     const candidateOut = quoteFixedPartition(state, reserves, input, output, remaining);
     const candidate = applyTrade(reserves, input, output, remaining, candidateOut);
     const alphaAfter = alphaNormalized(state, candidate);
+    const settled = flipSettled(ticks, alphaBefore, alphaAfter);
+    if (settled !== 0) {
+      crossings += settled;
+      state = aggregateTicks(ticks);
+      if (!isInvariant(state, reserves)) fail("AGGREGATE_MISMATCH", "Settled reserves do not satisfy the next aggregate state.");
+      continue;
+    }
     const crossing = nextCrossing(ticks, alphaBefore, alphaAfter);
     if (!crossing.found) {
       reserves = candidate;

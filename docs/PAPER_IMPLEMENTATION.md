@@ -11,7 +11,7 @@
 ## Scope
 
 **Deployed demo:**
-- **Network and basket:** an immutable four-token mock basket on **Unichain Sepolia** (chain 1301). USDC and USDT use 6 decimals; DAI and FRAX use 18. These are test assets, not issuer-backed tokens.
+- **Network and basket:** an immutable four-token mock basket, deployed on **Unichain Sepolia** (chain 1301, featured), Ethereum Sepolia, Arbitrum Sepolia and Arc Testnet. USDC and USDT use 6 decimals; DAI and FRAX use 18. These are test assets, not issuer-backed tokens.
 - **Access:** six canonical Uniswap v4 pools reach one shared reserve book through the hook. A pool does not own a separate allocation of liquidity.
 
 **Supported:**
@@ -37,18 +37,19 @@
 | Decimals and rounding (`MATH-13`, `MATH-14`) | `TokenUnits.sol`; `OrbitalV4Hook.beforeSwap` | Rounding direction, overflow and 6↔18-decimal settlement pass through a real PoolManager (FEE, SETTLE). |
 | Fee allocation and checkpoints (`MATH-15`) | `RangeFeeBook4.sol` (Q128 growth) | Weighted allocation, no claims on earlier fees, and small raw fees against large supplies pass. Collection through the hook passes (FEE). |
 | Liquidity scaling (`MATH-16`) | `OrbitalV4Hook._previewRangeChange` | Add/remove round trips lose at most 3 raw units, including a trapped range. Previews equal the amounts moved (LP, E2E). |
-| Solvency (`MATH-17`) | `OrbitalV4Hook.solvency` | Checked after every integration step, plus a fuzzed invariant over random swaps, liquidity changes and collections (SETTLE, INV). |
-| v4 settlement | `OrbitalV4Hook.sol` (claims custody, `BeforeSwapDelta`) | All six pools on one book, exact-output and native-liquidity rejection, and canonical-only initialization pass. There is a **live Unichain Sepolia swap** ([README](../README.md#deployed-contracts)) (SETTLE). |
-| Deterministic hook address | `HookAddressMiner.sol`; `script/OrbitalDeployBase.sol` | Salt is mined against the CREATE2 factory. The scripts are executed in tests, broadcast on anvil, and deployed on Unichain Sepolia at `0x…2888` (DEPLOY). |
+| Solvency (`MATH-17`) | `OrbitalV4Hook.solvency` (a view; solvency follows from the rounding rules, not a runtime check) | Asserted in most integration tests, plus a fuzzed invariant over random swaps, liquidity changes and collections (SETTLE, INV). |
+| v4 settlement | `OrbitalV4Hook.sol` (claims custody, `BeforeSwapDelta`) | All six pools on one book, exact-output and native-liquidity rejection, and canonical-only initialization pass. There is a **live swap on each of the four networks** ([README](../README.md#deployed-contracts)) (SETTLE). |
+| Deterministic hook address | `HookAddressMiner.sol`; `script/OrbitalDeployBase.sol` | Salt is mined against the CREATE2 factory. The scripts are executed in tests and broadcast on anvil. Every live hook's address carries the four permission flags (`0x2888`) in its low 14 bits (DEPLOY). |
 | Cross-language parity (`MATH-18`, `MATH-19`) | `packages/simulator`; `packages/fixtures/quote-vectors-v1.json` | Solidity engine, manager settlement and BigInt agree to the wei. The app quote reproduces the live swap (PARITY, APP). |
 | App transaction path | `app/src/chain/*` | Selectors checked against the sources. Builders are driven against a real anvil deployment (E2E). |
+| Range status consistency | `SegmentedTorus4._flipSettled` (and its JS/Python mirrors) | A trade that ends exactly on a range's plane leaves the range consistent. The next trade away from the plane flips it first, so a range never trades past its bound or stays boundary inside its band (BOUNDARY). |
 
 ## State and conservation requirements
 
 The logical basket state distinguishes:
 
 - The immutable token registry, decimals and pair-to-basket mapping (hook immutables and storage).
-- Each range's radius, boundary, interior/boundary status, LP supply and fee checkpoints. Virtual offset and redeemable inventory are derived live (`MATH-10`), never stored, so they cannot go stale after swaps.
+- Each range's radius, boundary, interior/boundary status, LP supply and fee checkpoints. Per-range virtual offsets and redeemable inventory are derived live (`MATH-10`), so they cannot go stale after swaps. Only their aggregate, the total virtual offset, is cached; it changes only when a range is resized.
 - The aggregates used to price trades (`r_int`, `k_bound`, `s_bound`), which are recomputed and cross-checked before every swap.
 - Custody (PoolManager ERC-6909 claims), unpaid fee liabilities and rounding dust per asset.
 
@@ -75,17 +76,16 @@ Trade execution rejects:
 - invalid solution branches
 - convergence and crossing limits
 - unsupported pools and unauthorized callbacks
-- stale deadlines and inadequate minimum outputs
+- stale deadlines and inadequate minimum outputs, when the swap supplies hook data (the app always does; empty hook data means no guard)
 
 ## Open obligations
 
 These remain deliberately unresolved, and each blocks the corresponding claim:
 
 - **All-boundary continuation.** A swap that would trap every range reverts in full.
-- **Error budget.** There is no proven fixed-point error budget beyond the `1e-9` relative-residual acceptance rule. Measured gas: 1.22M for an ordinary swap, 3.14M with one crossing, 4.80M with two ([gas baseline](results/gas-baseline.md)).
-- **SA-1 (Low).** `FixedPointMath.mulDivDown`'s 512-bit branch reverts instead of wrapping. It fails closed and is unreachable within the protocol's bounds; the fix is queued for the next deployment ([static analysis](results/static-analysis.md)).
+- **Error budget.** There is no proven fixed-point error budget beyond the `1e-9` relative-residual acceptance rule. Measured gas: 1.22M for an ordinary swap, 3.15M with one crossing, 4.81M with two ([gas baseline](results/gas-baseline.md)).
 - **Fee policy simplification.** A range trapped mid-swap still receives a full share, and boundary ranges that absorb part of a crossing trade are not credited.
 - **Governance and routing.** No fee governance, protocol fee or pause authority. No production router or position manager beyond v4-core's `PoolSwapTest`.
-- **Tokens and review.** Non-standard tokens are unsupported, and there has been no audit or economic review.
+- **Tokens and review.** Non-standard tokens are unsupported. There has been no professional audit or economic review, only the internal review in [AUDIT.md](AUDIT.md).
 
 The reference model is not a swap engine, an LP accountant or a proof of depeg protection. Those components satisfy the conservation requirements separately, and only to the extent their tests show.

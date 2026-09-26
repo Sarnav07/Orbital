@@ -7,6 +7,7 @@ import type { PoolStatsReader } from "./services";
 import { UniProvider, useUni, type ServicesProp } from "./state";
 import { SwapPage } from "./SwapPage";
 import { type Token, formatAmount, formatUsd, shortAddress } from "./tokens";
+import { OrbitalLogo } from "../ui/OrbitalLogo";
 import { Orbs } from "../ui/Orbs";
 import { ThemeMenu } from "../ui/ThemeMenu";
 import "./uni.css";
@@ -81,14 +82,6 @@ function Shell({ navigate, sandbox }: { navigate: Go; sandbox: ReactNode }) {
   </div>;
 }
 
-function OrbitalMark() {
-  return <svg className="uni-mark" viewBox="0 0 32 32" aria-hidden="true">
-    <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="2" />
-    <ellipse cx="16" cy="16" rx="13" ry="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" transform="rotate(-28 16 16)" />
-    <circle cx="16" cy="16" r="3.2" fill="currentColor" />
-  </svg>;
-}
-
 function Nav({ page, go, navigate, onNetwork }: { page: AppPage; go: (page: AppPage) => void; navigate: Go; onNetwork: (network: Network) => void }) {
   const { account, wallet, onChain, setDrawer, switchNetwork, network } = useUni();
   const [menu, setMenu] = useState(false);
@@ -97,7 +90,7 @@ function Nav({ page, go, navigate, onNetwork }: { page: AppPage; go: (page: AppP
   const link = (target: AppPage, label: string) => <a href={pathOf({ page: target })} className={active(target) ? "active" : ""} aria-current={active(target) ? "page" : undefined} onClick={(event) => { event.preventDefault(); go(target); }}>{label}</a>;
   return <header className="uni-nav">
     <div className="uni-nav-left">
-      <a href="/" className="uni-brand" onClick={(event) => { event.preventDefault(); navigate("home"); }}><OrbitalMark /><span>Orbital</span></a>
+      <a href="/" className="uni-brand" onClick={(event) => { event.preventDefault(); navigate("home"); }}><OrbitalLogo className="uni-mark" /><span>Orbital</span></a>
       <nav className="uni-nav-links" aria-label="App">
         {link("swap", "Swap")}{link("pools", "Pools")}{link("explore", "Explore")}{link("sandbox", "Sandbox")}
         <a href="/docs" onClick={(event) => { event.preventDefault(); navigate("docs"); }}>Docs</a>
@@ -173,13 +166,13 @@ function Drawers() {
 }
 
 function Toasts() {
-  const { tokens, network, explorerAddress, explorerTx, toasts, dismissToast } = useUni();
+  const { toasts, dismissToast } = useUni();
   if (!toasts.length) return null;
   const text = { signing: "Confirm in your wallet", pending: "Pending…", success: "Confirmed", failed: "Failed" };
   return <div className="uni-toasts" role="status">{toasts.map((toast) => <div key={toast.id} className={`uni-toast ${toast.status}`}>
     <span className="uni-toast-icon" aria-hidden="true">{toast.status === "success" ? "✓" : toast.status === "failed" ? "!" : ""}</span>
-    <div><strong>{toast.label}</strong><small>{toast.status === "failed" && toast.message ? toast.message : text[toast.status]}</small>
-      {toast.hash && <a href={explorerTx(toast.hash)} target="_blank" rel="noreferrer">View on explorer ↗</a>}</div>
+    <div><strong>{toast.label}</strong><small>{toast.message && toast.status !== "success" ? toast.message : text[toast.status]}</small>
+      {toast.href && <a href={toast.href} target="_blank" rel="noreferrer">View on explorer ↗</a>}</div>
     <button type="button" aria-label="Dismiss" onClick={() => dismissToast(toast.id)}>×</button>
   </div>)}</div>;
 }

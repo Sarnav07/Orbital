@@ -183,7 +183,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
             <div><h3>PoolManager</h3><p>Uniswap v4's singleton: custody as ERC-6909 claims, and atomic settlement inside <code>unlock</code>.</p></div>
             <div><h3>Sphere4 · Torus4 · SegmentedTorus4</h3><p>Range geometry, the fixed-partition solver and the crossing engine.</p></div>
             <div><h3>RangeFeeBook4</h3><p>Range shares and per-share fee growth, controlled by the hook.</p></div>
-            <div><h3>Unichain Sepolia</h3><p>The testnet where the hook and pools are deployed.</p></div>
+            <div><h3>Four testnets</h3><p>Unichain Sepolia (featured), Ethereum Sepolia, Arbitrum Sepolia and Arc Testnet each run the same hook and six pools.</p></div>
           </div>
           <details><summary>The four hook permissions</summary><div className="dg-details">
             <div className="dg-opcodes">
@@ -192,14 +192,14 @@ export function DocsPage({ navigate }: { navigate: Go }) {
               <div><code>1&lt;&lt;7</code><h3>beforeSwap</h3><p>Prices and settles the trade.</p></div>
               <div><code>1&lt;&lt;3</code><h3>beforeSwapReturnDelta</h3><p>Replaces the pool's own swap with the hook's result.</p></div>
             </div>
-            <pre><code>{"hook address ends in 0x…2888\nhookData = abi.encode(uint256 minAmountOut, uint256 deadline)"}</code></pre>
+            <pre><code>{"hook address: low 14 bits = 0x2888 (its four permission flags)\nhookData = abi.encode(uint256 minAmountOut, uint256 deadline)"}</code></pre>
             <p>The design is n-asset. The deployed hook supports four coins, up to 16 ranges, at most 8 range crossings per swap, and exact-input swaps only.</p>
           </div></details>
         </section>
 
         <section id="contracts" aria-labelledby="contracts-title">
           <p className="dg-label">On-chain</p><h2 id="contracts-title">Deployed <em>contracts.</em></h2>
-          <p>The same four-coin pool runs independently on four testnets; each has its own hook, router and mock tokens. Every contract has published source.</p>
+          <p>The same four-coin pool runs independently on four testnets; each has its own hook, router and mock tokens. Every hook and fee book is source-verified: on Blockscout for Unichain Sepolia, and as exact Sourcify matches for the other three. The current hooks are the audited build, deployed on 2026-09-26.</p>
           {NETWORKS.map((network) => {
             const deployment = network.deployment;
             const address = (value: string) => explorerAddressOn(network, value);
@@ -223,7 +223,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
             <details><summary>Why are approval and swap separate confirmations?</summary><div className="dg-details"><p>An approval changes how much a contract may spend. The swap is a separate transaction that actually exchanges coins. An existing allowance skips the approval.</p></div></details>
             <details><summary>Why can a quote fail or a swap revert?</summary><div className="dg-details"><p>The book may have moved past your minimum, the deadline may have passed, or the trade may be too large: it could trap every range or need more than eight crossings. The app explains the reason before you sign.</p></div></details>
             <details><summary>Are these real stablecoins?</summary><div className="dg-details"><p>No. They are mock tokens with a public mint and no value. Gas is paid in the network's native token (testnet ETH, or USDC on Arc from faucet.circle.com), available from public faucets.</p></div></details>
-            <details><summary>Has this been audited?</summary><div className="dg-details"><p>No. It is an unaudited prototype. Static analysis findings are triaged in the repository, and the known limits are listed in the implementation ledger.</p></div></details>
+            <details><summary>Has this been audited?</summary><div className="dg-details"><p>Not by a professional firm. It is a testnet prototype. An internal line-by-line security review (docs/AUDIT.md in the repository) found and fixed one High engine bug and several smaller issues, each with a test, before the current hooks were deployed. Static-analysis findings are triaged in the repository, and the known limits are listed in the implementation ledger.</p></div></details>
           </div>
         </section>
 

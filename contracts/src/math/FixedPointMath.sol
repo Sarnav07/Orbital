@@ -35,23 +35,24 @@ library FixedPointMath {
             productHigh := sub(productHigh, gt(remainder, productLow))
             productLow := sub(productLow, remainder)
         }
-        uint256 twos = denominator & (0 - denominator);
-        assembly ("memory-safe") {
-            denominator := div(denominator, twos)
-            productLow := div(productLow, twos)
-            twos := add(div(sub(0, twos), twos), 1)
-            productLow := or(productLow, mul(productHigh, twos))
-        }
-        uint256 inverse = (3 * denominator) ^ 2;
+        // The rest is modular arithmetic mod 2^256 (as in Uniswap's FullMath): wrapping is intended.
         unchecked {
+            uint256 twos = denominator & (0 - denominator);
+            assembly ("memory-safe") {
+                denominator := div(denominator, twos)
+                productLow := div(productLow, twos)
+                twos := add(div(sub(0, twos), twos), 1)
+                productLow := or(productLow, mul(productHigh, twos))
+            }
+            uint256 inverse = (3 * denominator) ^ 2;
             inverse *= 2 - denominator * inverse;
             inverse *= 2 - denominator * inverse;
             inverse *= 2 - denominator * inverse;
             inverse *= 2 - denominator * inverse;
             inverse *= 2 - denominator * inverse;
             inverse *= 2 - denominator * inverse;
+            return productLow * inverse;
         }
-        return productLow * inverse;
     }
 
     /// @notice Integer square root, rounded down.

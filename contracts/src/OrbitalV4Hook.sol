@@ -541,12 +541,14 @@ contract OrbitalV4Hook is IHooks, IUnlockCallback {
     }
 
     /// @dev Splits a raw input-token fee across ranges that were interior when the
-    ///      swap started, weighted by radius. Boundary ranges are not credited.
-    function _accrueFee(uint8 asset, uint256 fee, uint256 interiorMask) private {
+    ///      swap started, weighted by radius. Boundary ranges are not credited. With no
+    ///      interior range the fee stays in custody as unowed dust instead of reverting.
+    function _accrueFee(uint8 asset, uint256 fee, uint256 interiorMask) internal {
         uint256 count;
         for (uint256 i; i < _ticks.length; ++i) {
             if (interiorMask & (uint256(1) << i) != 0) ++count;
         }
+        if (count == 0) return;
         uint256[] memory ids = new uint256[](count);
         uint256[] memory weights = new uint256[](count);
         uint256 cursor;

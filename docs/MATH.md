@@ -118,7 +118,7 @@ It mutates no state and never discovers a crossing. A fixed-partition quote must
 `MATH-12` `SegmentedTorus4.swapExactIn` handles a whole swap:
 - **Setup:** receives ≤ 16 ranges, rebuilds the aggregate, and rejects a mismatch.
 - **Each segment:** quotes the remainder under `MATH-11`. If `α_int / r_int` crosses a boundary (`MATH-7`), it solves only to that boundary (`MATH-8`), applies the partial trade, flips the tied ranges, rebuilds `r_int`, `k_bound` and `s_bound`, and continues.
-- **Crossing limit:** at most 8 status transitions per swap.
+- **Crossing limit:** at most 8 crossing segments per swap (`MAX_CROSSINGS`). Ranges tied at the same boundary flip together in one segment, so the reported `crossings` count can exceed 8. A range already sitting on its plane when a trade starts flips first, with no trade, and that also uses one segment.
 - **Reported values:** the bitmap and crossing count come from the actual transition sequence.
 - **All-boundary:** continuing when every range would be at its boundary reverts the whole swap. There is no partial settlement.
 

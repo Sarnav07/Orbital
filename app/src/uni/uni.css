@@ -19,7 +19,7 @@
 .uni-muted{ color: var(--uni-neutral2); font-size: 14px; line-height: 20px; }
 
 /* Top navigation */
-.uni-nav{ position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; height: 72px; padding: 0 12px 0 20px; background: transparent; }
+.uni-nav{ position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; height: 72px; padding: 0 12px 0 20px; background: color-mix(in srgb, var(--uni-surface1) 82%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 .uni-nav-left,.uni-nav-right{ display: flex; align-items: center; gap: 12px; }
 .uni-brand{ display: flex; align-items: center; gap: 6px; margin-right: 16px; color: var(--uni-accent1) !important; font-size: 20px; font-weight: 535; text-decoration: none; }
 .uni-mark{ width: 28px !important; height: 28px !important; fill: none; color: var(--uni-accent1); }
@@ -33,7 +33,7 @@
 .uni-menu{ position: absolute; top: 48px; right: 0; display: grid; min-width: 200px; padding: 8px; border: 1px solid var(--uni-surface3); border-radius: 16px; background: var(--uni-surface1); box-shadow: 0 8px 24px var(--uni-shadow); }
 .uni-menu a{ padding: 10px 12px; border-radius: 12px; color: var(--uni-neutral1); font-size: 16px; text-decoration: none; }
 .uni-menu a:hover{ background: var(--uni-surface2); }
-.uni-connect{ height: 40px; padding: 0 16px; border: 0; border-radius: 20px; background: var(--uni-accent1); color: #fff; font-size: 16px; font-weight: 535; }
+.uni-connect{ height: 40px; padding: 0 16px; border: 0; border-radius: 20px; background: var(--uni-accent1); color: var(--uni-on-accent); font-size: 16px; font-weight: 535; }
 .uni-connect:hover{ background: var(--uni-accent1-hover); }
 .uni-account-button{ display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 6px; border: 1px solid var(--uni-surface3); border-radius: 20px; background: var(--uni-surface1); color: var(--uni-neutral1); font-size: 16px; }
 .uni-account-button:hover{ background: var(--uni-surface2); }
@@ -47,10 +47,6 @@
 .uni-headline{ margin: 0 0 40px; font-size: clamp(40px, 5.2vw, 72px); font-weight: 500; line-height: 1.05; letter-spacing: -.02em; text-align: center; }
 .uni-swap{ position: relative; width: 100%; max-width: 480px; }
 .uni-tabs{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.uni-tabs [role="tablist"]{ display: flex; gap: 4px; }
-.uni-tabs [role="tab"]{ height: 36px; padding: 0 12px; border: 0; border-radius: 20px; background: transparent; color: var(--uni-neutral2); font-size: 16px; font-weight: 535; }
-.uni-tabs [role="tab"].active{ background: var(--uni-surface2); color: var(--uni-neutral1); }
-.uni-tabs [role="tab"]:disabled{ color: var(--uni-neutral3); }
 .uni-settings-wrap{ position: relative; }
 .uni-settings-button{ display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px; border: 0; border-radius: 16px; background: transparent; color: var(--uni-neutral2); font-size: 14px; }
 .uni-settings-button:hover{ color: var(--uni-neutral1); }
@@ -81,14 +77,14 @@
 .uni-max:hover{ background: var(--uni-accent2-hover); }
 .uni-token-pill{ display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 10px 0 6px; border: 1px solid var(--uni-surface3); border-radius: 20px; background: var(--uni-surface1); color: var(--uni-neutral1); font-size: 18px; font-weight: 535; white-space: nowrap; box-shadow: 0 0 10px rgba(0,0,0,.04); }
 .uni-token-pill:hover{ background: var(--uni-surface2-hover); }
-.uni-token-pill.empty{ padding: 0 10px 0 16px; border-color: transparent; background: var(--uni-accent1); color: #fff; }
+.uni-token-pill.empty{ padding: 0 10px 0 16px; border-color: transparent; background: var(--uni-accent1); color: var(--uni-on-accent); }
 .uni-token-pill.empty:hover{ background: var(--uni-accent1-hover); }
 .uni-token-logo{ flex-shrink: 0; border-radius: 50%; }
 .uni-flip{ position: relative; z-index: 2; display: grid; place-items: center; width: 44px; height: 44px; margin: -20px auto; border: 4px solid var(--uni-surface1); border-radius: 16px; background: var(--uni-surface2); color: var(--uni-neutral1); }
 .uni-flip:hover{ background: var(--uni-surface2-hover); }
 
 .uni-main-button{ display: flex; justify-content: center; align-items: center; width: 100%; min-height: 56px; margin-top: 4px; padding: 0 16px; border: 0; border-radius: 20px; font-size: 18px; font-weight: 535; transition: background .12s; }
-.uni-main-button.accent{ background: var(--uni-accent1); color: #fff; }
+.uni-main-button.accent{ background: var(--uni-accent1); color: var(--uni-on-accent); }
 .uni-main-button.accent:hover{ background: var(--uni-accent1-hover); }
 .uni-main-button.soft{ background: var(--uni-accent2); color: var(--uni-accent1); }
 .uni-main-button.soft:hover{ background: var(--uni-accent2-hover); }
@@ -171,7 +167,7 @@
 
 /* Generic buttons and cards (pool,explore) */
 .uni-button{ display: inline-flex; justify-content: center; align-items: center; min-height: 40px; padding: 0 16px; border: 0; border-radius: 16px; font-size: 16px; font-weight: 535; }
-.uni-button-accent{ background: var(--uni-accent1); color: #fff; }
+.uni-button-accent{ background: var(--uni-accent1); color: var(--uni-on-accent); }
 .uni-button-accent:hover{ background: var(--uni-accent1-hover); }
 .uni-button-accent2{ background: var(--uni-accent2); color: var(--uni-accent1); }
 .uni-button-accent2:hover{ background: var(--uni-accent2-hover); }
@@ -319,3 +315,29 @@
 .uni-pool-bar a:hover{ color: var(--uni-neutral1); }
 .uni-pool-network{ display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 6px; border-radius: 16px; background: var(--uni-surface2); font-size: 14px; }
 .uni-pool-network img{ width: 20px; height: 20px; border-radius: 5px; }
+
+/* Swap card: one title instead of tabs */
+.uni-swap-title{ padding: 0 4px; color: var(--uni-neutral1); font-size: 18px; font-weight: 535; }
+
+/* Hover preview of the tradable tokens */
+.uni-token-peek{ position: relative; display: inline-flex; }
+.uni-token-peek-card{ position: absolute; z-index: 20; top: calc(100% + 8px); right: 0; display: grid; gap: 4px; width: 250px; padding: 12px; border: 1px solid var(--uni-surface3); border-radius: 16px; background: var(--uni-surface1); box-shadow: 0 12px 32px rgba(0,0,0,.24); pointer-events: none; }
+.uni-token-peek-title{ margin-bottom: 4px; color: var(--uni-neutral2); font-size: 12px; font-weight: 535; }
+.uni-token-peek-row{ display: grid; grid-template-columns: 20px auto 1fr auto; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; }
+.uni-token-peek-row strong{ color: var(--uni-neutral1); font-weight: 535; }
+.uni-token-peek-row small{ overflow: hidden; color: var(--uni-neutral2); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.uni-token-peek-row em{ color: var(--uni-neutral2); font-size: 12px; font-style: normal; }
+
+/* Fee row with where the fee goes */
+.uni-details-body .uni-fee-row{ flex-wrap: wrap; }
+.uni-fee-row i{ color: var(--uni-neutral3); font-style: normal; cursor: help; }
+.uni-details-body .uni-fee-note{ flex-basis: 100%; color: var(--uni-neutral2); font-size: 12px; line-height: 1.45; text-align: left; }
+
+/* Explore: pool and "You" on each swap */
+.uni-tx-type{ display: grid; gap: 2px; }
+.uni-tx-type strong{ display: flex; align-items: center; gap: 8px; font-weight: 535; }
+.uni-tx-pool{ color: var(--uni-neutral2); font-size: 12px; }
+.uni-you{ padding: 1px 8px; border-radius: 10px; background: var(--uni-accent1); color: var(--uni-on-accent); font-size: 11px; font-weight: 535; }
+
+/* Pool read failure on the swap page */
+.uni-book-error{ width: 100%; max-width: 480px; margin: 0 0 12px; padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--uni-warning) 45%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--uni-warning) 10%, transparent); color: var(--uni-neutral1); font-size: 13px; line-height: 1.45; }

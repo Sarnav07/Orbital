@@ -75,7 +75,7 @@
 .sb-actions, .sb-replay-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .sb-actions { margin: 8px 12px 0; }
 .sb-commit, .sb-reset { height: 52px; padding: 0 20px; border-radius: 20px; font: 535 17px var(--uni-font); cursor: pointer; transition: background .15s; }
-.sb-commit { border: 0; background: var(--uni-accent1); color: #fff; }
+.sb-commit { border: 0; background: var(--uni-accent1); color: var(--uni-on-accent); }
 .sb-commit:hover:not(:disabled) { background: var(--uni-accent1-hover); }
 .sb-commit:disabled { background: var(--uni-surface3); color: var(--uni-neutral3); cursor: not-allowed; }
 .sb-reset { border: 1px solid var(--uni-surface3); background: transparent; color: var(--uni-neutral1); }

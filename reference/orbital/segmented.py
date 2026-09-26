@@ -152,6 +152,11 @@ class SegmentedPool:
                 candidate_out = self._solve_output_fixed_status(input_index, output_index, remaining)
                 candidate = self._apply(self.reserves, input_index, output_index, remaining, candidate_out)
                 alpha_after = self.alpha_int_normalized(candidate)
+                settled = self._flip_settled(alpha_before, alpha_after)
+                if settled:
+                    self._assert_invariant()
+                    trace.append(self._segment(Decimal(0), Decimal(0), None))
+                    continue
                 target = self._next_crossing(alpha_before, alpha_after)
                 if target is None:
                     self.reserves = candidate
@@ -184,6 +189,25 @@ class SegmentedPool:
             interior_ranges=sum(item.is_interior for item in self.ranges),
             boundary_ranges=sum(not item.is_interior for item in self.ranges),
         )
+
+    def _flip_settled(self, old, new):
+        """Flip ranges already at (or past) their plane in the direction of travel.
+
+        A trade can end exactly on a plane; the strict tests in ``_next_crossing`` would
+        then never see that range again, leaving it interior past its bound or boundary
+        inside its band. Mirrors ``SegmentedTorus4._flipSettled``.
+        """
+        if new == old:
+            return 0
+        rising = new > old
+        flips = 0
+        for item in self.ranges:
+            if item.is_interior != rising:
+                continue
+            if (item.normalized_boundary <= old) if rising else (item.normalized_boundary >= old):
+                item.is_interior = not rising
+                flips += 1
+        return flips
 
     def _next_crossing(self, old, new):
         if new > old:

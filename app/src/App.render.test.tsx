@@ -23,7 +23,7 @@ beforeAll(() => {
     addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,
   }) as MediaQueryList);
   window.scrollTo = (() => {}) as typeof window.scrollTo;
-  // The live testnet tab must never reach the network from unit tests.
+  // Unit tests must never reach a live network.
   vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline in tests"); }));
 });
 
@@ -194,7 +194,7 @@ describe("Orbital landing experience", () => {
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(container.querySelector(".dg-pool-figure figcaption")?.textContent).toContain("DAI goes in. FRAX comes out.");
-    expect(container.querySelector("#contracts")?.textContent).toContain("0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888");
+    expect(container.querySelector("#contracts")?.textContent).toContain("0x5fe242b3544Dd0d30C395843dE75A2B8d4dBA888");
     expect(container.textContent).toMatch(/traps near \$0\.90/);
     expect(container.querySelector(".dg-lead")?.textContent).toMatch(/\bn stablecoins/);
   });
@@ -212,6 +212,29 @@ describe("Orbital landing experience", () => {
     act(() => auto.click());
     expect(document.documentElement.dataset.theme).toBeUndefined();
     expect(container.querySelector(".hero .uni-orbs")).toBeTruthy();
+  });
+
+  it("uses the app's sphere-and-ring Orbital logo in the landing bar", () => {
+    render();
+    const mark = container.querySelector(".site-brand svg.orbital-mark")!;
+    expect(mark).toBeTruthy();
+    expect(mark.querySelectorAll("circle")).toHaveLength(2);
+    expect(mark.querySelectorAll("ellipse")).toHaveLength(1);
+  });
+
+  it("draws the reserve-book card as a hub: four coins wired to one book", () => {
+    render();
+    const figure = container.querySelector(".principle-card .book-visual svg")!;
+    expect(figure).toBeTruthy();
+    expect([...figure.querySelectorAll(".book-chip text")].map((node) => node.textContent)).toEqual(["USDC", "USDT", "DAI", "FRAX"]);
+    expect(figure.querySelectorAll("line")).toHaveLength(4);
+    expect(figure.querySelector(".book-hub")?.textContent).toBe("ONE BOOK");
+  });
+
+  it("shows the thesis as a normal section, not a long sticky scroll", () => {
+    render();
+    expect(container.querySelector("#thesis-title")).toBeTruthy();
+    expect(container.querySelector(".manifesto-sticky")).toBeNull();
   });
 
   it("keeps the landing bar transparent at the top and solid once scrolled", () => {

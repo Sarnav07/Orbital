@@ -1,9 +1,12 @@
-import { createPublicClient, createWalletClient, custom, http, type Address, type Hash } from "viem";
+import { WaitForTransactionReceiptTimeoutError, createPublicClient, createWalletClient, custom, http, type Address, type Hash } from "viem";
 import { hookAbi } from "../chain/abi";
 import { DEFAULT_NETWORK, type Network } from "../chain/networks";
-import { readAccount, readBook, readRecentSwaps, readSwapsBetween, readVolume24h, type AccountState, type LiveBook, type RecentSwap } from "../chain/reads";
+import { readAccount, readBook, readRecentSwaps, readSenders, readSwapsBetween, readVolume24h, type AccountState, type LiveBook, type RecentSwap } from "../chain/reads";
 import { usdValue } from "./tokens";
 import type { Eip1193Provider } from "../chain/wallet";
+
+/** How long to wait for a receipt before reporting the transaction as still pending. */
+export const RECEIPT_TIMEOUT_MS = 10 * 60_000;
 
 export type ContractRequest = { address: Address; abi: readonly unknown[]; functionName: string; args: readonly unknown[] };
 
@@ -13,11 +16,14 @@ export type LiveServices = {
   readAccount(account: Address, rangeCount: number): Promise<AccountState>;
   readRecentSwaps(): Promise<{ ok: boolean; swaps: RecentSwap[]; latest: bigint }>;
   readSwapsBetween(fromBlock: bigint, toBlock: bigint): Promise<RecentSwap[]>;
+  /** Sender of each swap transaction, keyed by hash; failed lookups are omitted. */
+  readSenders(hashes: readonly Hash[]): Promise<Record<string, Address>>;
   blockNumber(): Promise<bigint>;
   previewLiquidity(kind: "add" | "remove", rangeId: number, shares: bigint): Promise<bigint[]>;
   /** Simulates from the account first (surfacing reverts before signing), then asks the wallet to send. */
   send(provider: Eip1193Provider, account: Address, request: ContractRequest): Promise<Hash>;
-  waitForReceipt(hash: Hash): Promise<"success" | "reverted">;
+  /** "timeout" means not mined yet, not failed: the transaction may still land. */
+  waitForReceipt(hash: Hash): Promise<"success" | "reverted" | "timeout">;
 };
 
 const clientFor = (network: Network) => createPublicClient({ chain: network.chain, transport: http(network.rpcUrl), batch: { multicall: true } });
@@ -30,6 +36,7 @@ export function createLiveServices(network: Network = DEFAULT_NETWORK): LiveServ
     readAccount: (account, rangeCount) => readAccount(client, deployment, account, rangeCount),
     readRecentSwaps: () => readRecentSwaps(client, deployment),
     readSwapsBetween: (fromBlock, toBlock) => readSwapsBetween(client, deployment, fromBlock, toBlock),
+    readSenders: (hashes) => readSenders(client, hashes),
     blockNumber: () => client.getBlockNumber(),
     previewLiquidity: async (kind, rangeId, shares) => [...await client.readContract({
       address: deployment.hook,
@@ -42,7 +49,14 @@ export function createLiveServices(network: Network = DEFAULT_NETWORK): LiveServ
       const wallet = createWalletClient({ account, chain: network.chain, transport: custom(provider) });
       return wallet.writeContract(simulated as never);
     },
-    waitForReceipt: async (hash) => (await client.waitForTransactionReceipt({ hash })).status,
+    waitForReceipt: async (hash) => {
+      try {
+        return (await client.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS })).status;
+      } catch (error) {
+        if (error instanceof WaitForTransactionReceiptTimeoutError) return "timeout";
+        throw error;
+      }
+    },
   };
 }
 

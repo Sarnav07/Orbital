@@ -2,7 +2,7 @@
 
 Status: accepted engineering direction; unresolved mathematical policies remain explicit in [MATH.md](../MATH.md) and [PAPER_IMPLEMENTATION.md](../PAPER_IMPLEMENTATION.md#open-obligations).
 
-Use a four-asset shared reserve book exposed through six v4 pair interfaces on Unichain Sepolia. Keep mathematical state independent from the v4 settlement adapter, wallet code and rendering.
+Use a four-asset shared reserve book exposed through six v4 pair interfaces (first deployed on Unichain Sepolia; since 2026-09-26 also on Ethereum Sepolia, Arbitrum Sepolia and Arc Testnet). Keep mathematical state independent from the v4 settlement adapter, wallet code and rendering.
 
 Use Foundry with pinned Solidity/EVM settings for contracts. Build an independently authored Python Decimal reference using sphere/plane projection geometry. The reference must not port Solidity's future integer algorithm: distinct numerical implementations help expose shared rounding and algebra mistakes. Use explicit decimal inputs and isolated, selectable precision.
 
@@ -15,6 +15,6 @@ Consequence: the public reference currently validates geometry only. Agreement b
 ## Amendment (2026-09-24): as-built stack and settlement
 
 - The interface is Vite + React with `motion`, not Next.js, and has no Three.js. SVG renders all geometry; floating point is used only for display, never for pricing.
-- The wallet layer is viem (pinned) with EIP-6963 injected-wallet discovery, not wagmi. It is code-split so the landing page does not load it, and it needs no API keys.
+- The wallet layer is viem (pinned) with EIP-6963 injected-wallet discovery, not wagmi. The wallet and transaction flow (`/app`) is code-split and needs no API keys. The landing bundle does include viem's chain definitions, because the docs page imports the network table.
 - The reference now also covers segmented trades (fixture `reference/fixtures/segmented-v1.json`), and the Solidity engine, PoolManager settlement and BigInt simulator agree exactly on `packages/fixtures/quote-vectors-v1.json`.
 - The hook custodies the basket as v4 PoolManager ERC-6909 claims and settles swaps and range liquidity itself. v4-core pins `PoolManager` to solc 0.8.26, so Foundry auto-selects compilers per unit (`auto_detect_solc`) and tests deploy the manager from its separately compiled artifact.

@@ -3,7 +3,7 @@ import type { Address, Hash } from "viem";
 import { mintRequest } from "../chain/actions";
 import { DEFAULT_NETWORK, explorerAddressOn, explorerTxOn, isNetworkKey, networkByKey, type Network } from "../chain/networks";
 import { explainRevert } from "../chain/errors";
-import type { AccountState, LiveBook, RecentSwap } from "../chain/reads";
+import { LOG_WINDOW, type AccountState, type LiveBook, type RecentSwap } from "../chain/reads";
 import { currentChainId, ensureChain, requestAccounts, watchWallets, type DiscoveredWallet, type Eip1193Provider } from "../chain/wallet";
 import { createLiveServices, readPoolStats, type ContractRequest, type LiveServices, type PoolStatsReader } from "./services";
 import { tokensFor, type Token } from "./tokens";
@@ -12,11 +12,26 @@ export const REFRESH_MS = 8_000;
 export const FAUCET_UNITS = 10_000n;
 
 export type TxStatus = "signing" | "pending" | "success" | "failed";
-export type Toast = { id: number; label: string; status: TxStatus; hash?: Hash; message?: string };
+/** `networkKey` and `href` pin a toast to the network its transaction was sent on. */
+export type Toast = { id: number; label: string; status: TxStatus; networkKey: string; hash?: Hash; href?: string; message?: string };
 export type Drawer = "closed" | "connect" | "account";
 type StatusListener = (status: TxStatus, detail?: { hash?: Hash; message?: string }) => void;
 
 export const NETWORK_KEY = "orbital:network";
+
+/** Most blocks the live feed catches up in one poll; a longer gap (a sleeping tab) skips ahead. */
+export const MAX_CATCH_UP_BLOCKS = 5n * LOG_WINDOW;
+
+/** First block to scan when the feed last reached `scanned` and the chain is now at `latest`. */
+export function catchUpFrom(scanned: bigint, latest: bigint): bigint {
+  const next = scanned + 1n;
+  const floor = latest > MAX_CATCH_UP_BLOCKS ? latest - MAX_CATCH_UP_BLOCKS + 1n : 0n;
+  return next > floor ? next : floor;
+}
+
+const swapKey = (swap: RecentSwap) => `${swap.hash}:${swap.input}:${swap.output}:${swap.amountIn}`;
+
+const STILL_PENDING = "Still pending: this transaction has not been mined yet. Check the explorer before trying again.";
 
 /** Last network the visitor chose; storage failures fall back to the default network. */
 export function readNetworkPreference(store?: Pick<Storage, "getItem"> | null): Network {
@@ -42,6 +57,8 @@ type UniState = {
   swaps: RecentSwap[];
   swapsOk: boolean;
   swapsLoaded: boolean;
+  /** Sender of each listed swap, keyed by tx hash, so Explore can mark the user's own swaps. */
+  swapSenders: Record<string, Address>;
   wallets: DiscoveredWallet[];
   wallet: DiscoveredWallet | null;
   account: Address | null;
@@ -84,6 +101,8 @@ export function UniProvider({ services, stats, walletHost, children }: { service
   const [swaps, setSwaps] = useState<RecentSwap[]>([]);
   const [swapsOk, setSwapsOk] = useState(true);
   const [swapsLoaded, setSwapsLoaded] = useState(false);
+  const [swapSenders, setSwapSenders] = useState<Record<string, Address>>({});
+  const sendersAsked = useRef(new Set<string>());
   const scannedTo = useRef<bigint | null>(null);
   const [wallets, setWallets] = useState<DiscoveredWallet[]>([]);
   const [wallet, setWallet] = useState<DiscoveredWallet | null>(null);
@@ -94,29 +113,60 @@ export function UniProvider({ services, stats, walletHost, children }: { service
   const [drawer, setDrawer] = useState<Drawer>("closed");
   const toastId = useRef(0);
   const onChain = chainId === network.chain.id;
-  const busy = toasts.some((toast) => toast.status === "signing" || toast.status === "pending");
+  // Only transactions on the network being viewed hold the buttons.
+  const busy = toasts.some((toast) => toast.networkKey === network.key && (toast.status === "signing" || toast.status === "pending"));
 
-  const refresh = useCallback(async () => {
+  // Reads started for a previous network or account must never land in the current view.
+  const liveApi = useRef(api);
+  liveApi.current = api;
+  const liveAccount = useRef(account);
+  liveAccount.current = account;
+  const refreshQueue = useRef<Promise<void>>(Promise.resolve());
+
+  const readOnce = useCallback(async () => {
+    const source = api;
+    const current = () => liveApi.current === source;
     try {
       const next = await api.readBook();
+      if (!current()) return;
       setBook(next);
       setBookError(null);
-      if (account) setAccountState(await api.readAccount(account, next.ticks.length));
+      if (account) {
+        const state = await api.readAccount(account, next.ticks.length);
+        if (current() && liveAccount.current === account) setAccountState(state);
+      }
     } catch (error) {
-      setBookError(explainRevert(error));
+      if (current()) setBookError(explainRevert(error));
     }
     try {
       const latest = await api.blockNumber();
+      if (!current()) return;
       setBlockNumber(latest);
-      if (scannedTo.current !== null && latest > scannedTo.current) {
-        const fresh = await api.readSwapsBetween(scannedTo.current + 1n, latest);
+      const scanned = scannedTo.current;
+      if (scanned !== null && latest > scanned) {
+        const fresh = await api.readSwapsBetween(catchUpFrom(scanned, latest), latest);
+        if (!current() || scannedTo.current !== scanned) return;
         scannedTo.current = latest;
-        if (fresh.length) setSwaps((current) => [...fresh.reverse(), ...current].slice(0, 25));
+        if (fresh.length) {
+          setSwaps((listed) => {
+            const seen = new Set(listed.map(swapKey));
+            return [...fresh.reverse().filter((swap) => !seen.has(swapKey(swap))), ...listed].slice(0, 25);
+          });
+        }
       }
     } catch {
       // The next poll retries.
     }
   }, [api, account]);
+
+  // One read at a time: overlapping polls would scan the same blocks twice.
+  const refresh = useCallback(() => {
+    refreshQueue.current = refreshQueue.current.then(readOnce, readOnce);
+    return refreshQueue.current;
+  }, [readOnce]);
+
+  // A different wallet account must not show the previous account's balances while its own load.
+  useEffect(() => { setAccountState(null); }, [account]);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,7 +178,10 @@ export function UniProvider({ services, stats, walletHost, children }: { service
     setSwaps([]);
     setSwapsOk(true);
     setSwapsLoaded(false);
+    setSwapSenders({});
+    sendersAsked.current = new Set();
     scannedTo.current = null;
+    refreshQueue.current = Promise.resolve();
     api.readRecentSwaps().then((recent) => {
       if (cancelled) return;
       setSwapsOk(recent.ok);
@@ -138,6 +191,15 @@ export function UniProvider({ services, stats, walletHost, children }: { service
     }).catch(() => { if (!cancelled) { setSwapsOk(false); setSwapsLoaded(true); } });
     return () => { cancelled = true; };
   }, [api]);
+
+  // Look each swap's sender up once; a failed lookup is not retried, it just leaves the "You" badge off.
+  useEffect(() => {
+    const missing = swaps.map((swap) => swap.hash).filter((hash) => !sendersAsked.current.has(hash));
+    if (!missing.length) return;
+    missing.forEach((hash) => sendersAsked.current.add(hash));
+    const source = api;
+    api.readSenders(missing).then((found) => { if (liveApi.current === source) setSwapSenders((current) => ({ ...current, ...found })); }).catch(() => {});
+  }, [api, swaps]);
 
   useEffect(() => {
     void refresh();
@@ -159,9 +221,9 @@ export function UniProvider({ services, stats, walletHost, children }: { service
     };
   }, [wallet]);
 
-  const pushToast = (toast: Omit<Toast, "id">) => {
+  const pushToast = (toast: Omit<Toast, "id" | "networkKey">) => {
     const id = ++toastId.current;
-    setToasts((current) => [{ ...toast, id }, ...current].slice(0, 4));
+    setToasts((current) => [{ ...toast, id, networkKey: network.key }, ...current].slice(0, 4));
     return id;
   };
   const updateToast = (id: number, patch: Partial<Toast>) => setToasts((current) => current.map((toast) => toast.id === id ? { ...toast, ...patch } : toast));
@@ -198,6 +260,7 @@ export function UniProvider({ services, stats, walletHost, children }: { service
 
   const run: UniState["run"] = async (label, request, onStatus) => {
     if (!wallet || !account) return false;
+    const home = network;
     const id = pushToast({ label, status: "signing" });
     onStatus?.("signing");
     try {
@@ -206,9 +269,20 @@ export function UniProvider({ services, stats, walletHost, children }: { service
         setChainId(network.chain.id);
       }
       const hash = await api.send(wallet.provider, account, request);
-      updateToast(id, { status: "pending", hash });
+      updateToast(id, { status: "pending", hash, href: explorerTxOn(home, hash) });
       onStatus?.("pending", { hash });
       const status = await api.waitForReceipt(hash);
+      if (status === "timeout") {
+        // Not failed: the transaction may still be mined. Never invite a second submission.
+        updateToast(id, { message: STILL_PENDING });
+        onStatus?.("pending", { hash, message: STILL_PENDING });
+        void api.waitForReceipt(hash).then((later) => {
+          if (later === "timeout") return;
+          updateToast(id, later === "success" ? { status: "success", message: undefined } : { status: "failed", message: "The transaction reverted on-chain." });
+          void refresh();
+        }).catch(() => {});
+        return false;
+      }
       await refresh();
       if (status === "success") {
         updateToast(id, { status: "success" });
@@ -240,7 +314,7 @@ export function UniProvider({ services, stats, walletHost, children }: { service
     api, network, setNetwork, tokens, statsFor: stats ?? readPoolStats,
     explorerAddress: (address) => explorerAddressOn(network, address),
     explorerTx: (hash) => explorerTxOn(network, hash),
-    book, bookError, blockNumber, swaps, swapsOk, swapsLoaded, wallets, wallet, account, chainId, onChain, accountState, busy, toasts, drawer,
+    book, bookError, blockNumber, swaps, swapsOk, swapsLoaded, swapSenders, wallets, wallet, account, chainId, onChain, accountState, busy, toasts, drawer,
     setDrawer, connect, disconnect, switchNetwork, run, mint,
     dismissToast: (id) => setToasts((current) => current.filter((toast) => toast.id !== id)),
   };

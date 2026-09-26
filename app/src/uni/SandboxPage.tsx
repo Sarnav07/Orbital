@@ -97,7 +97,7 @@ export default function SandboxPage() {
       <article className="sb-card sb-curve">
         <CardHead title="B · Two-asset plane" meta={`${ASSETS[input]} / ${ASSETS[output]} · range ${selected + 1}`} />
         <div className="sb-figure"><CurvePlot points={curve} committed={sandbox.reserves} preview={preview.reserves} input={input} output={output} selected={selected} /></div>
-        <p className="sb-legend">Pink is where range {selected + 1} stays interior along this pair's curve. Dashed markers show where it reaches its boundary.</p>
+        <p className="sb-legend">The accent colour marks where range {selected + 1} stays interior along this pair's curve. Dashed markers show where it reaches its boundary.</p>
       </article>
 
       <article className="sb-card sb-swap">

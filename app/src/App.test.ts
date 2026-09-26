@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { docsChapters } from "./DocsPage";
 import {
   architecture,
+  revealRange,
   principles,
   geometryCards,
   homePrinciples,
@@ -62,8 +63,20 @@ describe("Unichain Sepolia deployment panel", () => {
     const { liveDeployment } = await import("./App");
     expect(liveDeployment.chainId).toBe(1301);
     expect(liveDeployment.hook.href).toBe(`https://unichain-sepolia.blockscout.com/address/${liveDeployment.hook.address}`);
-    expect(liveDeployment.hook.address.toLowerCase().endsWith("2888")).toBe(true);
+    // v4 reads hook permissions from the address's low 14 bits: 0x2888 = the four flags this hook uses.
+    expect(BigInt(liveDeployment.hook.address) & 0x3fffn).toBe(0x2888n);
     expect(liveDeployment.tokens.map((token) => token.symbol).sort()).toEqual(["DAI", "FRAX", "USDC", "USDT"]);
     expect(liveDeployment.swapTx.href).toMatch(/\/tx\/0x[0-9a-f]{64}$/);
+  });
+
+  it("turns each revealed word white earlier than its share of the scroll, and always by the end", () => {
+    const total = 25;
+    for (let index = 0; index < total; index += 1) {
+      const [start, end] = revealRange(index, total);
+      expect(start).toBeLessThanOrEqual(index / total);
+      expect(end).toBeLessThanOrEqual(1);
+      expect(end).toBeGreaterThan(start);
+    }
+    expect(revealRange(total - 1, total)[1]).toBeLessThanOrEqual(.9);
   });
 });

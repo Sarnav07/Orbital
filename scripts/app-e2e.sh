@@ -17,6 +17,10 @@ for _ in $(seq 1 50); do
 done
 
 cd "$ROOT/contracts"
+# `forge script` compiles only the script's own imports. DeployOrbitalDemo deploys PoolManager
+# with deployCode(), whose artifact comes from test/utils/V4Artifacts.sol, so build everything
+# first; otherwise a fresh checkout (CI) fails with "vm.getCode: no matching artifact found".
+forge build >/dev/null
 PRIVATE_KEY="$DEPLOYER_KEY" POOL_MANAGER=0x0000000000000000000000000000000000000000 DEPLOYMENT_OUT="$OUT" \
   forge script script/DeployOrbitalDemo.s.sol --rpc-url "$RPC" --broadcast >/dev/null
 echo "Deployed demo to anvil: $(jq -r .hook "$OUT")"

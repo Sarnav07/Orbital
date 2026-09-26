@@ -43,7 +43,7 @@ describe.skipIf(!rpc)("app transaction builders against a real anvil deployment"
     for (let asset = 0; asset < 4; asset += 1) {
       await send(trader, mintRequest(deployment, asset, trader.address, parseUnits("10000", deployment.decimals[asset])));
     }
-    await send(trader, approveRequest(deployment, usdc, deployment.router));
+    await send(trader, approveRequest(deployment, usdc, deployment.router, parseUnits("1000", deployment.decimals[usdc])));
 
     const book = await readBook(client, deployment);
     const quote = quoteHookSwap(book, usdc, dai, parseUnits("1000", deployment.decimals[usdc]));
@@ -61,7 +61,7 @@ describe.skipIf(!rpc)("app transaction builders against a real anvil deployment"
   it("explains a slippage revert before the wallet is asked to sign", async () => {
     const usdt = index("USDT");
     const frax = index("FRAX");
-    await send(trader, approveRequest(deployment, usdt, deployment.router));
+    await send(trader, approveRequest(deployment, usdt, deployment.router, parseUnits("50", deployment.decimals[usdt])));
     const book = await readBook(client, deployment);
     const quote = quoteHookSwap(book, usdt, frax, parseUnits("50", deployment.decimals[usdt]));
     const request = swapRequest(deployment, { input: usdt, output: frax, amountIn: quote.amountIn, minAmountOut: quote.amountOut + 1n, deadline: 10n ** 12n });
@@ -71,11 +71,11 @@ describe.skipIf(!rpc)("app transaction builders against a real anvil deployment"
   }, 60_000);
 
   it("adds and removes range liquidity for exactly the on-chain previews", async () => {
-    for (let asset = 0; asset < 4; asset += 1) await send(trader, approveRequest(deployment, asset, deployment.hook));
     const book = await readBook(client, deployment);
     const rangeId = 1;
     const shares = book.totalShares[rangeId] / 1_000n;
     const preview = await client.readContract({ address: deployment.hook, abi: hookAbi, functionName: "previewAddLiquidity", args: [BigInt(rangeId), shares] });
+    for (let asset = 0; asset < 4; asset += 1) await send(trader, approveRequest(deployment, asset, deployment.hook, preview[asset]));
     const before = await Promise.all([0, 1, 2, 3].map((asset) => balance(asset, trader.address)));
     await send(trader, addLiquidityRequest(deployment, rangeId, shares, preview, 10n ** 12n));
     const afterAdd = await Promise.all([0, 1, 2, 3].map((asset) => balance(asset, trader.address)));

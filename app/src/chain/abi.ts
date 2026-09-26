@@ -13,6 +13,8 @@ const hookErrors = [
   "error SlippageExceeded()", "error TooManyCrossings()", "error TransferFailed()", "error UnsupportedCallback()",
   "error UnsupportedCurrency()", "error UnsupportedDecimals(uint8 decimals)", "error UnsupportedPool()", "error ZeroAmount()",
   "error ZeroAmountIn()",
+  // RangeFeeBook4, reached through the hook.
+  "error InvalidWeights()", "error OnlyController()",
 ] as const;
 
 export const hookAbi = parseAbi([

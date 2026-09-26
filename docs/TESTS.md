@@ -116,7 +116,27 @@ Tests live in `app/src`.
 | `APP-03` | Builders, reads, wallet discovery, network switch and revert explanations | `actions`, `reads`, `wallet` and `errors` `.test.ts` |
 | `APP-04` | Uniswap-style app: swap quote exact to the wei, token selector search and flip, main-button states, approve → review → swap with custom slippage, wallet and account drawers (mint), network switch, pool positions and new-position preview, explore totals and tx links, app routing | `uni/UniApp.test.tsx` |
 | `APP-05` | Sandbox fee mirror, max quotable input, depeg stress and trap prices | `simulator.test.ts` |
-| `APP-06` | Landing/docs rendering, client-side routing, tabs, docs guide | `App.test.ts`, `App.render.test.tsx` |
+| `APP-06` | Landing/docs rendering, client-side routing, docs guide, landing logo and layout | `App.test.ts`, `App.render.test.tsx` |
+| `APP-07` | Four networks: keys, chain ids, canonical PoolManagers, explorer links | `chain/networks.test.ts` |
+| `APP-08` | Theme preference (Auto / Light / Dark) | `ui/theme.test.ts` |
+
+### J. Audit regressions ([AUDIT.md](AUDIT.md))
+
+Each test failed before its fix and passes after it.
+
+| Case ID | Finding | Test |
+| --- | --- | --- |
+| `AUD-C1a` | A trade ending exactly on a range's plane: the reverse trade must restore the range | `BoundaryStatusTest.testReverseAfterExactLandingRestoresTheRange` |
+| `AUD-C1b` | Re-entering a band exactly on its plane, then rising: the range must trap again, not trade past its bound | `testRisingAfterExactReentryTrapsTheRangeAgain`, `testAttributionSurvivesRisingAfterExactReentry` |
+| `AUD-C1c` | Any pair, either approach, any follow-up size: status consistent, attribution available (fuzz) | `testFuzzExactLandingThenAnyTradeKeepsStatusConsistent` |
+| `AUD-C1d` | The same through a real PoolManager: range recovers, LP withdrawals keep working | `OrbitalV4HookBoundaryTest` (2 tests) |
+| `AUD-C1e` | BigInt and Python mirrors apply the same rule | BigInt `restores a range after a trade that ended exactly on its plane`; Python `test_ranges_already_on_their_plane_flip_before_trading_away` |
+| `AUD-C2` | `mulDivDown` wide products equal `FullMath` (formerly SA-1) | `testWideProductBranchMatchesFullMath`, `testFuzzWideProductsMatchFullMath` |
+| `AUD-C3` | A fee with no range in range stays in custody instead of reverting the swap | `OrbitalV4HookFeeAccrualTest` |
+| `AUD-D1` | The redeploy script reuses tokens and router, seeds a new hook, and serves a guarded swap | `testRedeployScriptReusesTokensAndRouterAndSeedsANewHook` |
+| `AUD-A1…A8` | Network-switch race, Max precision, receipt timeout, exact approvals, toast network, account switch, stale liquidity preview, pool-read failure banner | `uni/UniApp.test.tsx` · `Audit regressions`; `uni/state.test.ts` (catch-up cap) |
+| `AUD-A6` | Every hook error explained in plain words; `require` reasons and panic codes kept | `chain/errors.test.ts` |
+| `AUD-CI` | `make app-e2e` passes from a fresh checkout | `scripts/app-e2e.sh` builds before `forge script` (the CI `app-e2e` job) |
 
 ## 3. Real-contract and live evidence
 
@@ -126,7 +146,7 @@ Tests live in `app/src`.
 | `E2E-02` | Slippage revert explained before signing | `explains a slippage revert…` |
 | `E2E-03` | Liquidity moves exactly the on-chain previews | `adds and removes range liquidity…` |
 | `E2E-04` | Seeding LP collects exactly the simulated fees; history lists swaps | `collects the seeding LP's fees…` |
-| `LIVE-01` | Recorded Unichain Sepolia book is seeded, solvent and quotable; live swap found | `live.testnet.test.ts` (opt-in) |
+| `LIVE-01` | Each of the four recorded deployments is seeded, solvent and quotable, and its live swap is found | `live.testnet.test.ts` (opt-in, 8 checks) |
 
 ## 4. Invariants, fuzzing and resources
 
@@ -158,7 +178,7 @@ Measured values are in [results/gas-baseline.md](results/gas-baseline.md).
 
 `TEST-8` Passing requires:
 - `make check` and `make app-e2e` pass with pinned tools (Foundry 1.7.1, Python 3.14.6, Node 22+).
-- Formatting and `forge lint` report no warnings.
+- Formatting (`forge fmt --check`, enforced in CI) and `forge lint` (run by hand) report no warnings.
 - Every static-analysis finding is triaged in [results/static-analysis.md](results/static-analysis.md).
 
 Coverage percentage alone is not the gate. External audit and deployment approval are separate from test completion.

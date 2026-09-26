@@ -64,6 +64,20 @@ library SegmentedTorus4 {
             uint256 candidateOut = Torus4.quoteExactIn(state, reserves, input, output, remaining);
             uint256[4] memory candidate = _apply(reserves, input, output, remaining, candidateOut);
             uint256 alphaAfter = _alphaNormalized(state, candidate);
+
+            // A previous trade can end exactly on a range's plane, and re-normalizing alpha
+            // under the new partition can leave it a unit on either side. A range already at
+            // (or by rounding past) its plane in the direction of travel flips first, with no
+            // trade; otherwise the strict test below would never see it and the range would
+            // stay interior past its bound, or boundary inside its band.
+            uint256 settled = _flipSettled(ticks, alphaBefore, alphaAfter);
+            if (settled != 0) {
+                crossingEvents += settled;
+                state = _aggregate(ticks);
+                if (!Torus4.isInvariant(state, reserves)) revert AggregateMismatch();
+                continue;
+            }
+
             (bool crosses, uint256 lambda) = _nextCrossing(ticks, alphaBefore, alphaAfter);
 
             if (!crosses) {
@@ -167,6 +181,25 @@ library SegmentedTorus4 {
                 }
             }
             return (found, best);
+        }
+    }
+
+    /// @dev Rising: interior ranges whose plane is at or below the current alpha become
+    ///      boundary. Falling: boundary ranges whose plane is at or above it become interior.
+    function _flipSettled(Tick[] memory ticks, uint256 oldAlpha, uint256 newAlpha)
+        private
+        pure
+        returns (uint256 flips)
+    {
+        if (newAlpha == oldAlpha) return 0;
+        bool rising = newAlpha > oldAlpha;
+        for (uint256 i; i < ticks.length; ++i) {
+            if (ticks[i].isInterior != rising) continue;
+            uint256 lambda = ticks[i].k.divWadDown(ticks[i].radius);
+            if (rising ? lambda <= oldAlpha : lambda >= oldAlpha) {
+                ticks[i].isInterior = !rising;
+                ++flips;
+            }
         }
     }
 

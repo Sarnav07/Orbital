@@ -1,4 +1,4 @@
-import { decodeAbiParameters, maxUint256 } from "viem";
+import { decodeAbiParameters } from "viem";
 import { describe, expect, it } from "vitest";
 import { MAX_PRICE_LIMIT, MIN_PRICE_LIMIT, addLiquidityRequest, approveRequest, collectFeesRequest, mintRequest, poolKey, removeLiquidityRequest, swapRequest } from "./actions";
 import { DEPLOYMENT } from "./config";
@@ -33,7 +33,7 @@ describe("transaction builders", () => {
 
   it("builds token, liquidity and fee requests against the right contracts", () => {
     expect(mintRequest(DEPLOYMENT, 1, account, 7n)).toMatchObject({ address: DEPLOYMENT.currencies[1], functionName: "mint", args: [account, 7n] });
-    expect(approveRequest(DEPLOYMENT, 2, DEPLOYMENT.router)).toMatchObject({ address: DEPLOYMENT.currencies[2], functionName: "approve", args: [DEPLOYMENT.router, maxUint256] });
+    expect(approveRequest(DEPLOYMENT, 2, DEPLOYMENT.router, 1_000n)).toMatchObject({ address: DEPLOYMENT.currencies[2], functionName: "approve", args: [DEPLOYMENT.router, 1_000n] });
     expect(addLiquidityRequest(DEPLOYMENT, 1, 10n, [1n, 2n, 3n, 4n], 9n)).toMatchObject({ address: DEPLOYMENT.hook, functionName: "addLiquidity", args: [1n, 10n, [1n, 2n, 3n, 4n], 9n] });
     expect(removeLiquidityRequest(DEPLOYMENT, 1, 10n, [0n, 0n, 0n, 0n], 9n)).toMatchObject({ functionName: "removeLiquidity", args: [1n, 10n, [0n, 0n, 0n, 0n], 9n] });
     expect(collectFeesRequest(DEPLOYMENT, 2, account)).toMatchObject({ functionName: "collectFees", args: [2n, account] });

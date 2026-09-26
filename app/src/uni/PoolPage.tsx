@@ -69,15 +69,18 @@ function NewPosition({ onBack }: { onBack: () => void }) {
   const { tokens, network, explorerAddress, explorerTx, book, api, account, wallet, accountState, busy, run, setDrawer } = useUni();
   const [range, setRange] = useState<number | null>(null);
   const [bps, setBps] = useState(10);
-  const [preview, setPreview] = useState<bigint[] | null>(null);
+  const [previewed, setPreviewed] = useState<{ key: string; amounts: bigint[] } | null>(null);
   const shares = book && range !== null ? book.totalShares[range] * BigInt(bps) / 10_000n : 0n;
+  const key = `${range}:${shares}`;
+  // Only a preview of the amount selected right now may size the transaction's limits.
+  const preview = previewed?.key === key ? previewed.amounts : null;
 
   useEffect(() => {
-    if (range === null || shares === 0n) return setPreview(null);
+    if (range === null || shares === 0n) return setPreviewed(null);
     let live = true;
-    api.previewLiquidity("add", range, shares).then((amounts) => live && setPreview(amounts)).catch(() => live && setPreview(null));
+    api.previewLiquidity("add", range, shares).then((amounts) => live && setPreviewed({ key, amounts })).catch(() => live && setPreviewed(null));
     return () => { live = false; };
-  }, [api, range, shares]);
+  }, [api, range, shares, key]);
 
   const maxIn = preview ? preview.map(up) : null;
   const needsApproval = maxIn && accountState ? maxIn.findIndex((amount, index) => accountState.hookAllowances[index] < amount) : -1;
@@ -87,7 +90,7 @@ function NewPosition({ onBack }: { onBack: () => void }) {
   else if (range === null) action = { label: "Select a range", disabled: true, tone: "disabled" };
   else if (!maxIn) action = { label: "Enter an amount", disabled: true, tone: "disabled" };
   else if (short >= 0) action = { label: `Insufficient ${tokens[short].symbol} balance`, disabled: true, tone: "disabled" };
-  else if (needsApproval >= 0) action = { label: `Approve ${tokens[needsApproval].symbol}`, onClick: () => void run(`Approve ${tokens[needsApproval].symbol}`, approveRequest(network.deployment, needsApproval, network.deployment.hook)), tone: "accent" };
+  else if (needsApproval >= 0) action = { label: `Approve ${tokens[needsApproval].symbol}`, onClick: () => void run(`Approve ${tokens[needsApproval].symbol}`, approveRequest(network.deployment, needsApproval, network.deployment.hook, maxIn[needsApproval])), tone: "accent" };
   else action = { label: "Add liquidity", onClick: () => void run(`Add liquidity to range ${range + 1}`, addLiquidityRequest(network.deployment, range, shares, maxIn as unknown as Four, deadline())).then((ok) => ok && onBack()), tone: "accent" };
 
   return <section className="uni-page uni-narrow">
@@ -109,7 +112,7 @@ function NewPosition({ onBack }: { onBack: () => void }) {
       <div className="uni-segment">{[1, 10, 100].map((option) => <button type="button" key={option} className={bps === option ? "active" : ""} onClick={() => setBps(option)}>{option / 100}% of range</button>)}</div>
       <div className="uni-deposit">
         {tokens.map((token) => <div className="uni-deposit-row" key={token.symbol}><img src={token.logo} alt="" /><span>{token.symbol}</span><strong>{preview ? formatAmount(preview[token.index], token.decimals, 4) : "0"}</strong><small>{preview ? formatUsd(preview[token.index], token.decimals) : "$0"}</small></div>)}
-        {preview && <p className="uni-deposit-total">Total {usdTotal(tokens, preview)} · includes 0.5% slippage headroom on approval</p>}
+        {preview && <p className="uni-deposit-total">Total {usdTotal(tokens, preview)} · each coin is approved for exactly its maximum, which includes 0.5% slippage headroom</p>}
       </div>
       <button type="button" className={`uni-main-button ${action.tone}`} disabled={action.disabled || busy} onClick={action.onClick}>{action.label}</button>
     </div>
@@ -119,16 +122,17 @@ function NewPosition({ onBack }: { onBack: () => void }) {
 function PositionDetail({ range, onBack }: { range: number; onBack: () => void }) {
   const { tokens, network, explorerAddress, explorerTx, book, api, account, accountState, busy, run } = useUni();
   const [bps, setBps] = useState(10_000);
-  const [preview, setPreview] = useState<bigint[] | null>(null);
+  const [previewed, setPreviewed] = useState<{ shares: bigint; amounts: bigint[] } | null>(null);
   const yourShares = accountState?.shares[range] ?? 0n;
   const shares = yourShares * BigInt(bps) / 10_000n;
+  const preview = previewed?.shares === shares ? previewed.amounts : null;
   const tick = book?.ticks[range];
   const pending = accountState?.pendingFees[range] ?? [0n, 0n, 0n, 0n];
 
   useEffect(() => {
-    if (shares === 0n) return setPreview(null);
+    if (shares === 0n) return setPreviewed(null);
     let live = true;
-    api.previewLiquidity("remove", range, shares).then((amounts) => live && setPreview(amounts)).catch(() => live && setPreview(null));
+    api.previewLiquidity("remove", range, shares).then((amounts) => live && setPreviewed({ shares, amounts })).catch(() => live && setPreviewed(null));
     return () => { live = false; };
   }, [api, range, shares]);
 

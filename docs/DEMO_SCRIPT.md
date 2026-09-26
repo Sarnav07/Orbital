@@ -8,7 +8,7 @@
 
 ### One-line summary
 
-An experimental Uniswap v4 hook that trades n stablecoins through one shared reserve book instead of n(n − 1)/2 separately funded pair pools. It is live today as a 4-coin book on Unichain Sepolia.
+An experimental Uniswap v4 hook that trades n stablecoins through one shared reserve book instead of n(n − 1)/2 separately funded pair pools. It is live today as a 4-coin book on Unichain Sepolia, Ethereum Sepolia, Arbitrum Sepolia and Arc Testnet.
 
 ### Short project description
 
@@ -16,33 +16,84 @@ Stablecoin liquidity is often split across pair pools: USDC/USDT liquidity canno
 
 This submission includes the Solidity hook with real PoolManager integration tests, deployment scripts, an independent Python geometry reference, a BigInt engine that agrees with Solidity to the wei, and an interactive sandbox.
 
-Orbital is an unaudited prototype on mock tokens. It makes no claim of real-fund readiness or depeg protection.
+Orbital is a testnet prototype on mock tokens with an internal security review (not a professional audit). It makes no claim of real-fund readiness or depeg protection.
 
-## Three-minute recording script
+## Recording script (about 8–10 minutes; trim freely)
 
-### 0:00–0:20: problem and thesis
+### Prep
 
-Show the app hero. Say: "n stablecoins create n(n − 1)/2 pair pools: six for four coins, twenty-eight for eight. The usual design fragments liquidity across them. Orbital keeps one reserve book and lets every pair draw from it. What you're about to see is the live 4-coin book." If time allows, open `/docs` briefly to show the protocol guide.
+- **MetaMask on Unichain Sepolia** with a little ETH. Import the four mock tokens:
+  - USDC `0xFc82C77256e74289f1B70f14126d21550C495a33`
+  - USDT `0x4eBEa178D6a3F18C166cb8C5b67BA73dBCD26b4A`
+  - DAI `0xD3c22D959fE356a4C0AA6B2e3A8B2C6cf04F2Aae`
+  - FRAX `0x68400C108461BD3D6F2124D6B81127D5f2c1EF65`
 
-### 0:20–0:55: a real swap through the hook
+  Mint test tokens once from the app's account drawer.
+- **Terminal:**
+  - `export RPC=https://sepolia.unichain.org`
+  - `export HOOK=0x5fe242b3544Dd0d30C395843dE75A2B8d4dBA888`
+  - `reserves()` is ordered `[USDT, FRAX, DAI, USDC]` (sorted by address).
+- **Browser tabs:** landing page, `/app/sandbox`, `/app`. Hide bookmarks and notifications.
 
-Open `/app` with a funded wallet. Connect from the top-right button, mint test tokens from the account drawer if needed, select DAI, enter 1,000 USDC, approve, **Review** → **Swap**. Open the toast's Blockscout link, then show the swap in **Explore → Transactions**. As a fallback, show the [recorded live swap](https://unichain-sepolia.blockscout.com/tx/0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46). Say: "This USDC→DAI swap went through the real v4 PoolManager. The hook converted six-decimal USDC to the shared WAD book, charged 0.05%, minted the input as manager claims and burned DAI claims to pay out. Only the USDC and DAI coordinates of the one shared book moved."
+### 1. Problem (≈1:00) · landing hero → `/02 The problem`
 
-### 0:55–1:35: sandbox, tick crossing and depeg stress
+Say: "Stablecoins all target one dollar, yet AMMs trade them in pairs. n coins need n(n−1)/2 pools: six for four coins, twenty-eight for eight. Each pool is funded separately, so depth on USDC/USDT does nothing for DAI/FRAX."
 
-Open **Sandbox** from the app nav. Quote 1.5M USDC → DAI to show a tick crossing and the narrow range turning `BOUNDARY`. Scroll to **Depeg stress** with USDT selected: the narrow ranges trap near $0.90 and $0.80, and their USDT share stops growing while the wide range keeps absorbing. Say: "This is the same BigInt engine the contracts are checked against. Narrow ranges hold far less real inventory for the same depth near the peg. Under pressure they trap at their boundary instead of absorbing unbounded loss."
+Walk the three cards:
+- **Fragmented:** capital is split across pools.
+- **Flat:** curve-style depth is wasted far from the peg, and v3 concentration only works for two tokens.
+- **Fragile:** a flat pool keeps buying a failing coin.
 
-### 1:35–2:15: evidence
+### 2. Solution (≈0:45) · `/01 The thesis`, `/03 Mechanics`
 
-Run `make check` and show the summary. Point at `QuoteVectors.t.sol` / `OrbitalV4HookParity.t.sol` (Solidity, PoolManager settlement and JavaScript agree to the wei) and the invariant campaign (custody always covers redeemable inventory and fees).
+Say: "Orbital, based on Paradigm's paper, puts every coin in one reserve book. It is a Uniswap v4 hook: the six pair pools are only doors into that book."
 
-### 2:15–2:40: LPs
+On Mechanics: "A sphere holds the reserves, a plane marks each LP's range, and a torus folds the active ranges together. LPs choose how tightly to sit around $1, like v3 ticks in n dimensions."
 
-Show `addLiquidity` / `removeLiquidity` / `collectFees` in the tests or on-chain. Say: "An LP buys shares of one range at that range's current basket. Withdrawals return only that range's inventory, and fees accrue to ranges that were live for the trade."
+### 3. Principles and Protocol (≈0:45) · `/04`, `/05`
 
-### 2:40–3:00: honest close
+- **Principles:** shared route state; range-specific claims (an LP owns only its range's inventory); observed transitions (every crossing is recorded and replayable).
+- **Protocol cards:** name each in a phrase, then click one **Learn more** to show it opens the docs.
 
-Show [release limits](RELEASE.md#current-limits). Say: "This is an unaudited prototype on mock tokens with explicit limits, such as no all-boundary continuation and no production router, but every claim here has a test or a transaction behind it."
+### 4. Architecture and Route map (≈0:45) · `/06`, `/07`
+
+- **Architecture:** scroll the cards. Pair interfaces (six v4 pools) → the Orbital hook (`beforeSwap` prices with the geometry) → settlement (the hook holds the basket as PoolManager ERC-6909 claims).
+- **Route map:** "Every pair routes into the same hook and PoolManager. A USDC→DAI trade and a USDT→FRAX trade move the same state."
+
+### 5. Simulator and docs (≈0:30) · `/08 Launch sandbox` → Docs
+
+Say: "The simulator runs the same BigInt engine the contracts are tested against, to the wei."
+
+Open `/docs` and point at the sidebar: "The docs map each piece back to the Paradigm paper if you want the math."
+
+### 6. Sandbox: ranges and depeg stress (≈1:45) · `/app/sandbox`
+
+1. Swap 10,000 USDC → DAI: the rate is about 1:1 and no range changes.
+2. Swap 1,500,000: the curve point moves, **range 1 turns Boundary**, and each range shows its capital efficiency (13.1× / 6.6× / 2.0×). Say: "The narrow range gives the most depth near the peg. Once price leaves its band it stops trading instead of absorbing losses."
+3. Open **Depeg stress** with USDT and step through it. Ranges trap near **$0.90** and **$0.80** while the wide range keeps trading; show each range's exposure to the failing coin. Say: "This answers Fragile: LPs choose how much depeg risk they carry."
+
+### 7. Real swaps on-chain (≈2:00) · `/app` + MetaMask + terminal
+
+1. Take the "before" snapshot in the terminal:
+   - `cast call $HOOK "reserves()(uint256[4])" --rpc-url $RPC`
+   - `cast call $HOOK "solvency()(uint256[4],uint256[4])" --rpc-url $RPC`
+2. In MetaMask, show the four imported tokens and their balances.
+3. In the app, swap 1,000 USDC → DAI:
+   - Connect, then hover **Select token** to show the token preview.
+   - Point at the fee line: 0.05%, paid to in-range LPs.
+   - Approve the exact amount, then **Review** → **Swap**, confirm in MetaMask, and open the explorer link.
+4. Run `reserves()` again: "Only the USDC and DAI coordinates moved."
+5. Swap USDT → FRAX (a different pool) and run `reserves()` again. Say: "Different pool, same book. With pair pools, USDT/FRAX would need its own funded pool."
+6. Open **Explore**: both swaps are listed with their pool name and a **You** badge.
+7. Run `solvency()`: "The hook's PoolManager claims still cover every LP's inventory plus unpaid fees."
+8. Optional: repeat once more (DAI → USDT), faster.
+
+### 8. Proof and close (≈1:00)
+
+1. Show `make check` (live or recorded). Say: "74 Solidity tests with invariant fuzzing, a Python reference, and a BigInt engine that matches Solidity to the wei."
+2. Show [AUDIT.md](AUDIT.md): "A line-by-line security review found and fixed a real engine bug before this deployment."
+3. Close: "Live on Unichain, Ethereum Sepolia, Arbitrum Sepolia and Arc. It is a testnet prototype on mock tokens, and every claim has a test or a transaction behind it."
+4. End on the Pools page showing all four networks.
 
 ## Recording checklist
 

@@ -17,6 +17,8 @@ export type Deployment = {
   deployBlock: number;
   /** A recorded swap through the live pool, when one was made at deploy time. */
   liveSwapTx?: Hash;
+  /** The earlier hook this deployment replaced; it stays on-chain but the app no longer uses it. */
+  supersedes?: { hook: Address; feeBook: Address; deployBlock: number; liveSwapTx?: Hash };
 };
 
 /** Recorded Unichain Sepolia deployment (contracts/deployments/unichain-sepolia.json). */
@@ -24,7 +26,8 @@ export const DEPLOYMENT = deployment as Deployment;
 export const EXPLORER = "https://unichain-sepolia.blockscout.com";
 /** First block of the Unichain deployment broadcast. */
 export const DEPLOY_BLOCK = BigInt(DEPLOYMENT.deployBlock);
-export const LIVE_SWAP_TX: Hash = "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46";
+/** The smoke swap recorded when the current Unichain hook was deployed. */
+export const LIVE_SWAP_TX: Hash = DEPLOYMENT.liveSwapTx!;
 
 /** Earliest block worth scanning for this deployment's events. */
 export const deployBlockOf = (deployment: Deployment) => BigInt(deployment.deployBlock ?? 0);

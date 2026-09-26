@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Hash } from "viem";
+import { formatUnits, type Hash } from "viem";
 import { approveRequest, swapRequest } from "../chain/actions";
 import { explainRevert } from "../chain/errors";
 import { minAmountOut, quoteHookSwap, type HookQuote } from "../chain/quote";
@@ -20,7 +20,7 @@ function TokenLogo({ token, size = 24 }: { token: Token; size?: number }) {
 }
 
 export function SwapPage() {
-  const { tokens, network, explorerAddress, explorerTx, book, account, accountState, wallet, onChain, busy, setDrawer, switchNetwork, run } = useUni();
+  const { tokens, network, explorerAddress, explorerTx, book, bookError, account, accountState, wallet, onChain, busy, setDrawer, switchNetwork, run } = useUni();
   const [sell, setSell] = useState<number>(tokens.find((token) => token.symbol === "USDC")?.index ?? 0);
   const [buy, setBuy] = useState<number | null>(null);
   const [amountText, setAmountText] = useState("");
@@ -32,6 +32,8 @@ export function SwapPage() {
   // Snapshot of the quote under review, so the modal survives the input clearing after success.
   const [review, setReview] = useState<{ quote: HookQuote; sell: Token; buy: Token; minOut: bigint; execRate: number; slippageBps: number; auto: boolean } | null>(null);
   const effectiveSlippage = slippageBps ?? AUTO_SLIPPAGE_BPS;
+  const preview = { tokens, balances: accountState?.balances };
+  const fee = feeLabel(network.deployment.fee);
 
   const sellToken = tokens[sell];
   const buyToken = buy === null ? null : tokens[buy];
@@ -88,17 +90,15 @@ export function SwapPage() {
   else if (!amount) main = { label: "Enter an amount", tone: "disabled" };
   else if (balance < amount) main = { label: `Insufficient ${sellToken.symbol} balance`, tone: "disabled" };
   else if (!quote) main = { label: "Insufficient liquidity for this trade", tone: "disabled" };
-  else if (allowance < amount) main = { label: `Approve ${sellToken.symbol}`, tone: "accent", onClick: () => void run(`Approve ${sellToken.symbol}`, approveRequest(network.deployment, sell, network.deployment.router)) };
+  else if (allowance < amount) main = { label: `Approve ${sellToken.symbol}`, tone: "accent", onClick: () => void run(`Approve ${sellToken.symbol}`, approveRequest(network.deployment, sell, network.deployment.router, amount)) };
   else main = { label: "Review", tone: "accent", onClick: () => buyToken && setReview({ quote, sell: sellToken, buy: buyToken, minOut, execRate: execRate ?? 0, slippageBps: effectiveSlippage, auto: slippageBps === null }) };
 
   return <section className="uni-swap-page">
     <h1 className="uni-headline">Swap every stablecoin, one book.</h1>
+    {bookError && <p className="uni-book-error" role="alert">Could not read the {network.name} pool: {bookError} {book ? "Quotes below use the last good read and may be out of date; the on-chain minimum still protects your swap." : "Quotes are unavailable until it can be read."}</p>}
     <div className="uni-swap">
       <div className="uni-tabs">
-        <div role="tablist" aria-label="Trade type">
-          <button type="button" role="tab" aria-selected="true" className="active">Swap</button>
-          {["Limit", "Buy", "Sell"].map((tab) => <button type="button" role="tab" aria-selected="false" key={tab} disabled title="Not supported by this hook">{tab}</button>)}
-        </div>
+        <span className="uni-swap-title">Swap</span>
         <div className="uni-settings-wrap">
           <button type="button" className={slippageBps !== null ? "uni-settings-button custom" : "uni-settings-button"} aria-label="Settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)}>
             {slippageBps !== null && <span>{(slippageBps / 100).toString()}% slippage</span>}
@@ -113,11 +113,11 @@ export function SwapPage() {
         <div className="uni-panel-row">
           <input aria-label="Sell amount" className="uni-amount" inputMode="decimal" autoComplete="off" placeholder="0" value={amountText}
             onChange={(event) => { const next = event.target.value.replace(",", "."); if (/^\d*\.?\d*$/.test(next)) setAmountText(next); }} />
-          <TokenPill token={sellToken} onClick={() => setSelecting("sell")} />
+          <TokenPill token={sellToken} onClick={() => setSelecting("sell")} preview={preview} />
         </div>
         <div className="uni-panel-foot">
           <span className="uni-usd">{amount ? formatUsd(amount, sellToken.decimals) : "$0"}</span>
-          {accountState && <span className="uni-balance">{formatAmount(balance, sellToken.decimals, 4)} {sellToken.symbol}{balance > 0n && <button type="button" className="uni-max" onClick={() => setAmountText(String(Number(balance) / 10 ** sellToken.decimals))}>Max</button>}</span>}
+          {accountState && <span className="uni-balance">{formatAmount(balance, sellToken.decimals, 4)} {sellToken.symbol}{balance > 0n && <button type="button" className="uni-max" onClick={() => setAmountText(formatUnits(balance, sellToken.decimals))}>Max</button>}</span>}
         </div>
       </div>
 
@@ -129,7 +129,7 @@ export function SwapPage() {
         <span className="uni-panel-label">Buy</span>
         <div className="uni-panel-row">
           <input aria-label="Buy amount" className="uni-amount" readOnly placeholder="0" value={quote && buyToken ? inputValue(quote.amountOut, buyToken.decimals) : ""} />
-          <TokenPill token={buyToken} onClick={() => setSelecting("buy")} />
+          <TokenPill token={buyToken} onClick={() => setSelecting("buy")} preview={preview} />
         </div>
         <div className="uni-panel-foot">
           <span className="uni-usd">{quote && buyToken ? formatUsd(quote.amountOut, buyToken.decimals) : ""}</span>
@@ -142,10 +142,10 @@ export function SwapPage() {
       {quote && buyToken && <div className="uni-details">
         <button type="button" className="uni-details-toggle" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}>
           <span className="uni-rate">1 {sellToken.symbol} = {(execRate ?? 0).toFixed(4)} {buyToken.symbol} <small>(${(execRate ?? 0).toFixed(2)})</small></span>
-          <span className="uni-details-right">Fee {formatAmount(quote.fee, sellToken.decimals, 4)} {sellToken.symbol}<svg viewBox="0 0 24 24" aria-hidden="true" className={detailsOpen ? "open" : ""}><path d="m6 9 6 6 6-6" /></svg></span>
+          <span className="uni-details-right">Fee {fee} · {formatAmount(quote.fee, sellToken.decimals, 4)} {sellToken.symbol}<svg viewBox="0 0 24 24" aria-hidden="true" className={detailsOpen ? "open" : ""}><path d="m6 9 6 6 6-6" /></svg></span>
         </button>
         {detailsOpen && <dl className="uni-details-body">
-          <div><dt>Fee (0.05%)</dt><dd>{formatAmount(quote.fee, sellToken.decimals, 6)} {sellToken.symbol}</dd></div>
+          <FeeRow fee={fee} amount={quote.fee} token={sellToken} />
           <div><dt>Network</dt><dd>{network.name}</dd></div>
           <div><dt>Price impact</dt><dd>{priceImpact === null ? "—" : `${(priceImpact * 100).toFixed(2)}%`}</dd></div>
           <div><dt>Max slippage</dt><dd>{slippageBps === null ? <><span className="uni-tag">Auto</span> 0.5%</> : `${slippageBps / 100}%`}</dd></div>
@@ -176,11 +176,35 @@ export function SwapPage() {
   </section>;
 }
 
-function TokenPill({ token, onClick }: { token: Token | null; onClick: () => void }) {
+/** Pool fee in pips (1e6 = 100%) as a percentage label, e.g. 500 → "0.05%". */
+const feeLabel = (pips: number) => `${pips / 10_000}%`;
+
+/** The fee with where it actually goes: OrbitalV4Hook._accrueFee credits it to ranges that were in range when the swap started. */
+function FeeRow({ fee, amount, token }: { fee: string; amount: bigint; token: Token }) {
+  return <div className="uni-fee-row">
+    <dt>Fee ({fee}) <i title="Taken from your input before pricing, rounded up.">ⓘ</i></dt>
+    <dd>{formatAmount(amount, token.decimals, 6)} {token.symbol}</dd>
+    <dd className="uni-fee-note">Paid in {token.symbol} to LPs of in-range ranges, weighted by range size. The hook holds it until LPs collect it.</dd>
+  </div>;
+}
+
+type TokenPreview = { tokens: Token[]; balances?: bigint[] };
+
+function TokenPill({ token, onClick, preview }: { token: Token | null; onClick: () => void; preview: TokenPreview }) {
+  const [peek, setPeek] = useState(false);
   const chevron = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>;
-  return token
-    ? <button type="button" className="uni-token-pill" onClick={onClick}><TokenLogo token={token} /><span>{token.symbol}</span>{chevron}</button>
-    : <button type="button" className="uni-token-pill empty" onClick={onClick}><span>Select token</span>{chevron}</button>;
+  if (token) return <button type="button" className="uni-token-pill" onClick={onClick}><TokenLogo token={token} /><span>{token.symbol}</span>{chevron}</button>;
+  // Hover or focus shows a read-only glance at what this book trades; clicking still opens the picker.
+  return <span className="uni-token-peek" onMouseOver={() => setPeek(true)} onMouseLeave={() => setPeek(false)} onFocus={() => setPeek(true)} onBlur={() => setPeek(false)}>
+    <button type="button" className="uni-token-pill empty" onClick={onClick} aria-describedby="uni-token-peek-card"><span>Select token</span>{chevron}</button>
+    {peek && <span className="uni-token-peek-card" id="uni-token-peek-card" role="tooltip">
+      <span className="uni-token-peek-title">Tokens you can swap · {preview.tokens.length}</span>
+      {preview.tokens.map((item) => <span className="uni-token-peek-row" key={item.symbol}>
+        <TokenLogo token={item} size={20} /><strong>{item.symbol}</strong><small>{item.name}</small>
+        {preview.balances && <em>{formatAmount(preview.balances[item.index], item.decimals, 2)}</em>}
+      </span>)}
+    </span>}
+  </span>;
 }
 
 function SettingsPopover({ slippageBps, setSlippageBps, deadline, setDeadline }: {
@@ -268,14 +292,14 @@ function ReviewModal({ sellToken, buyToken, quote, minOut, slippageBps, auto, ex
       {status === "review" && <>
         <dl className="uni-details-body">
           <div><dt>Rate</dt><dd>1 {sellToken.symbol} = {execRate.toFixed(4)} {buyToken.symbol}</dd></div>
-          <div><dt>Fee (0.05%)</dt><dd>{formatAmount(quote.fee, sellToken.decimals, 6)} {sellToken.symbol}</dd></div>
+          <FeeRow fee={feeLabel(network.deployment.fee)} amount={quote.fee} token={sellToken} />
           <div><dt>Max slippage</dt><dd>{auto && <span className="uni-tag">Auto</span>} {slippageBps / 100}%</dd></div>
           <div><dt>Min. received</dt><dd>{formatAmount(minOut, buyToken.decimals, 4)} {buyToken.symbol}</dd></div>
           <div><dt>Network</dt><dd>{network.name}</dd></div>
         </dl>
         <button type="button" className="uni-main-button accent" onClick={confirm}>Swap</button>
       </>}
-      {(status === "signing" || status === "pending") && <div className="uni-progress"><span className="uni-spinner" aria-hidden="true" /><p>{status === "signing" ? "Confirm swap in wallet" : "Swap submitted"}</p>{hash && <a href={explorerTx(hash)} target="_blank" rel="noreferrer">View on explorer ↗</a>}</div>}
+      {(status === "signing" || status === "pending") && <div className="uni-progress"><span className="uni-spinner" aria-hidden="true" /><p>{status === "signing" ? "Confirm swap in wallet" : message ?? "Swap submitted"}</p>{hash && <a href={explorerTx(hash)} target="_blank" rel="noreferrer">View on explorer ↗</a>}</div>}
       {status === "success" && <div className="uni-progress success"><span className="uni-check" aria-hidden="true">✓</span><p>Swapped {formatAmount(quote.amountIn, sellToken.decimals, 4)} {sellToken.symbol} for {buyToken.symbol}</p>{hash && <a href={explorerTx(hash)} target="_blank" rel="noreferrer">View on explorer ↗</a>}<button type="button" className="uni-main-button soft" onClick={onClose}>Close</button></div>}
       {status === "failed" && <div className="uni-progress failed"><span className="uni-check" aria-hidden="true">!</span><p>{message ?? "The swap failed."}</p><button type="button" className="uni-main-button soft" onClick={() => setStatus("review")}>Try again</button></div>}
     </div>

@@ -4,8 +4,13 @@ import { type Token, formatAmount, formatUsd, shortAddress } from "./tokens";
 /** Sum of token amounts valued at $1 each (the agreed convention for the mock basket). */
 const usdTotal = (tokens: Token[], amounts: bigint[]) => formatUsd(amounts.reduce((sum, amount, index) => sum + amount * 10n ** BigInt(18 - tokens[index].decimals), 0n), 18);
 
+/** A pair pool is named in v4 PoolKey order: currency0 is the lower token address. */
+const poolName = (a: Token, b: Token) => (a.address.toLowerCase() < b.address.toLowerCase() ? [a, b] : [b, a]).map((token) => token.symbol).join(" / ");
+const isMine = (sender: string | undefined, account: string | null) => !!sender && !!account && sender.toLowerCase() === account.toLowerCase();
+
 export function ExplorePage() {
-  const { tokens, network, explorerAddress, explorerTx, book, swaps, swapsOk, swapsLoaded, blockNumber } = useUni();
+  const { tokens, network, explorerAddress, explorerTx, book, swaps, swapsOk, swapsLoaded, swapSenders, account, blockNumber } = useUni();
+  const fee = `${network.deployment.fee / 10_000}%`;
   return <section className="uni-page">
     <div className="uni-page-head"><h1>Explore</h1><span className="uni-muted">{blockNumber ? `Block ${blockNumber.toLocaleString()}` : "Connecting…"} · {network.name}</span></div>
 
@@ -39,7 +44,10 @@ export function ExplorePage() {
         const bought = tokens[swap.output];
         return <div role="row" key={`${swap.hash}-${swap.input}-${swap.amountIn}`}>
           <span>{swap.blockNumber.toLocaleString()}</span>
-          <span>Swap {sold?.symbol} for {bought?.symbol}</span>
+          <span className="uni-tx-type">
+            <strong>Swap {sold?.symbol} → {bought?.symbol}{isMine(swapSenders[swap.hash], account) && <span className="uni-you">You</span>}</strong>
+            {sold && bought && <small className="uni-tx-pool">{poolName(sold, bought)} pool · {fee} · Orbital hook</small>}
+          </span>
           <span className="uni-table-token"><img src={sold?.logo} alt="" />{sold ? formatAmount(swap.amountIn, sold.decimals, 2) : ""} {sold?.symbol}</span>
           <span className="uni-table-token"><img src={bought?.logo} alt="" />{bought ? formatAmount(swap.amountOut, bought.decimals, 2) : ""} {bought?.symbol}</span>
           <span><a href={explorerTx(swap.hash)} target="_blank" rel="noreferrer">{shortAddress(swap.hash)} ↗</a></span>

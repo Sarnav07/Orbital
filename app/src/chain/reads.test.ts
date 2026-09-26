@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEPLOYMENT } from "./config";
 import { DEPLOY_BLOCK } from "./config";
-import { LOG_WINDOW, readAccount, readBook, readRecentSwaps, readSwapsBetween, readVolume24h, type ReadClient } from "./reads";
+import { LOG_WINDOW, readAccount, readBook, readRecentSwaps, readSenders, readSwapsBetween, readVolume24h, type ReadClient } from "./reads";
 
 const RADIUS = 10_000_000n * 10n ** 18n;
 const ticks = [1001n, 1004n, 1050n].map((permille, index) => ({ radius: RADIUS, k: RADIUS * permille / 1000n, isInterior: index !== 0 }));
@@ -118,5 +118,21 @@ describe("chain reads", () => {
     } as unknown as ReadClient;
     const volume = await readVolume24h(client, DEPLOYMENT);
     expect(volume).toBe(5n * 10n ** 18n);
+  });
+});
+
+describe("readSenders", () => {
+  it("looks each distinct transaction up once and skips the ones that fail", async () => {
+    const asked: string[] = [];
+    const client = {
+      getTransaction: async ({ hash }: { hash: string }) => {
+        asked.push(hash);
+        if (hash === "0xbad") throw new Error("pruned");
+        return { from: `0xfrom${hash.slice(2)}` };
+      },
+    } as unknown as ReadClient;
+    const senders = await readSenders(client, ["0xa", "0xb", "0xa", "0xbad"]);
+    expect(asked.sort()).toEqual(["0xa", "0xb", "0xbad"]);
+    expect(senders).toEqual({ "0xa": "0xfroma", "0xb": "0xfromb" });
   });
 });

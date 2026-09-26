@@ -56,6 +56,18 @@ class SegmentedPoolTests(unittest.TestCase):
         self.close(pool.global_residual(), D(0))
         self.assertLess(pool.alpha_int_normalized(), D("1.10"))
 
+    def test_ranges_already_on_their_plane_flip_before_trading_away(self):
+        # Mirrors SegmentedTorus4._flipSettled: a trade that ended exactly on a plane leaves the
+        # next trade starting there; the strict crossing tests alone would never flip it.
+        pool = self.pool()
+        with pool._context():
+            self.assertEqual(pool._flip_settled(D("1.10"), D("1.20")), 1)
+            self.assertEqual(pool.snapshot()["interior"], (False, True))
+            self.assertEqual(pool._flip_settled(D("1.10"), D("1.05")), 1)
+            self.assertEqual(pool.snapshot()["interior"], (True, True))
+            self.assertEqual(pool._flip_settled(D("1.05"), D("1.20")), 0)
+            self.assertEqual(pool._flip_settled(D("1.10"), D("1.10")), 0)
+
     def test_tied_ranges_cross_together(self):
         pool = SegmentedPool(4, [("50", "1.10"), ("100", "1.10"), ("100", "1.30")])
         _, trace = pool.swap_exact_in(0, 1, "120")

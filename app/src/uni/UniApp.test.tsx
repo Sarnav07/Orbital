@@ -47,6 +47,7 @@ function fakeServices(book = makeBook(), account = makeAccount()) {
       swaps: [{ input: idx("USDC"), output: idx("DAI"), amountIn: units("USDC", 1000n), amountOut: 999_433_404_420_670_936_920n, fee: 500_000n, crossings: 0n, hash: "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46" as const, blockNumber: 99n }],
     })),
     readSwapsBetween: vi.fn(async () => []),
+    readSenders: vi.fn(async (hashes: readonly `0x${string}`[]) => Object.fromEntries(hashes.map((hash) => [hash, "0x000000000000000000000000000000000000bEEF" as const]))),
     blockNumber: vi.fn(async () => 100n),
     previewLiquidity: vi.fn(async () => [1_000_000n, 1_000_000n, 10n ** 18n, 10n ** 18n]),
     send: vi.fn(async () => "0x01" as const),
@@ -126,7 +127,10 @@ describe("Swap page", () => {
     expect(document.querySelector("h1")?.textContent).toBe("Swap every stablecoin, one book.");
     expect(document.querySelector(".uni-footer-note")?.textContent).toContain("one shared reserve book");
     expect(document.body.textContent).not.toMatch(/uniswap/i);
-    for (const tab of ["Limit", "Buy", "Sell"]) expect((byText(tab, ".uni-tabs button") as HTMLButtonElement).disabled).toBe(true);
+    // Only Swap: the hook has no limit orders or fiat on/off-ramp, so those tabs are gone entirely.
+    expect(document.querySelector(".uni-tabs [role='tablist']")).toBeNull();
+    expect(document.querySelector(".uni-swap-title")?.textContent).toBe("Swap");
+    for (const tab of ["Limit", "Buy", "Sell"]) expect(byText(tab, ".uni-tabs button")).toBeUndefined();
     expect(mainButton().textContent).toBe("Connect wallet");
     expect(containing("Select token", ".uni-token-pill")).toBeTruthy();
   });
@@ -138,6 +142,28 @@ describe("Swap page", () => {
     expect((document.querySelector("input[aria-label='Buy amount']") as HTMLInputElement).value).toBe("999.4334");
     expect(document.querySelector(".uni-panel .uni-usd")?.textContent).toBe("$1,000.00");
     expect(document.querySelector(".uni-rate")?.textContent).toContain("1 USDC = 0.9994 DAI");
+  });
+
+  it("previews the swappable tokens when hovering Select token, without opening the picker", async () => {
+    await render(fakeServices());
+    const peek = document.querySelector<HTMLElement>(".uni-token-peek")!;
+    expect(peek).toBeTruthy();
+    await act(async () => { peek.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
+    const card = document.querySelector(".uni-token-peek-card")!;
+    expect(card.textContent).toContain("Tokens you can swap · 4");
+    expect([...card.querySelectorAll(".uni-token-peek-row strong")].map((node) => node.textContent)).toEqual([...DEPLOYMENT.symbols]);
+    expect(document.querySelector(".uni-modal")).toBeNull();
+  });
+
+  it("states the 0.05% fee and where it goes", async () => {
+    await render(fakeServices());
+    await chooseToken("Buy", "DAI");
+    await type("Sell amount", "1000");
+    expect(document.querySelector(".uni-details-right")?.textContent).toContain("0.05%");
+    await click(document.querySelector<HTMLElement>(".uni-details-toggle")!);
+    const body = document.querySelector(".uni-details-body")!.textContent ?? "";
+    expect(body).toContain("Fee (0.05%)");
+    expect(body).toMatch(/LPs of in-range ranges/);
   });
 
   it("filters the token list and flips instead of selecting the same token twice", async () => {
@@ -255,6 +281,18 @@ describe("Pool, Explore and Sandbox pages", () => {
     expect(document.body.textContent).toContain("$14,360,744.00");
     const link = [...document.querySelectorAll<HTMLAnchorElement>(".uni-tx-table a")].find((node) => node.href.includes("0x23e33f62"));
     expect(link).toBeTruthy();
+    const row = link!.closest("[role='row']")!;
+    expect(row.textContent).toContain("Swap USDC → DAI");
+    expect(row.querySelector(".uni-tx-pool")?.textContent).toMatch(/^(USDC \/ DAI|DAI \/ USDC) pool · 0\.05%/);
+    expect(row.querySelector(".uni-you")).toBeNull();
+  });
+
+  it("marks the connected wallet's own swaps with a You badge", async () => {
+    history.replaceState({}, "", "/app/explore");
+    await render(fakeServices(), walletHost());
+    await click(byText("Connect", ".uni-nav button"));
+    await click(containing("Rabby", ".uni-drawer button"));
+    expect(document.querySelector(".uni-tx-table .uni-you")?.textContent).toBe("You");
   });
 
   it("renders the sandbox inside the app shell and navigates between pages", async () => {
@@ -315,7 +353,138 @@ describe("Pools across networks", () => {
     await click(containing("Arc Testnet", ".uni-network-menu button") as HTMLElement);
     expect(factory).toHaveBeenLastCalledWith(expect.objectContaining({ key: "arc-testnet" }));
     const links = [...document.querySelectorAll<HTMLAnchorElement>(".uni-contract-table a")].map((node) => node.href);
-    expect(links.every((href) => href.startsWith("https://testnet.arcscan.app/address/"))).toBe(true);
+    expect(links.every((href) => href.startsWith("https://explorer.testnet.arc.io/address/"))).toBe(true);
     expect(document.querySelector(".uni-network-button")?.textContent).toContain("Arc");
+  });
+});
+
+// Regressions for the pre-submission audit (docs/AUDIT.md, findings A-1 … A-8).
+function eventfulWalletHost(chainId = "0x515") {
+  const listeners: Record<string, (value: unknown) => void> = {};
+  const host = new EventTarget() as Host;
+  const provider = {
+    request: vi.fn(async ({ method }: { method: string }) => {
+      if (method === "eth_requestAccounts") return ["0x000000000000000000000000000000000000bEEF"];
+      if (method === "eth_chainId") return chainId;
+      return null;
+    }),
+    on: vi.fn((event: string, handler: (value: unknown) => void) => { listeners[event] = handler; }),
+    removeListener: vi.fn(),
+  };
+  host.addEventListener("eip6963:requestProvider", () => {
+    host.dispatchEvent(Object.assign(new Event("eip6963:announceProvider"), { detail: { info: { uuid: "w", name: "Rabby", icon: "", rdns: "io.rabby" }, provider } }));
+  });
+  return { host, emit: (event: string, value: unknown) => act(async () => { listeners[event]?.(value); }) };
+}
+
+async function connectWallet() {
+  await click(byText("Connect", ".uni-nav button"));
+  await click(containing("Rabby", ".uni-drawer button"));
+}
+
+describe("Audit regressions", () => {
+  it("A-1: drops a book read that resolves after the network was switched", async () => {
+    history.replaceState({}, "", "/app/explore");
+    let releaseOld: (book: LiveBook) => void = () => {};
+    const slow = fakeServices();
+    slow.readBook = vi.fn(() => new Promise<LiveBook>((resolve) => { releaseOld = resolve; }));
+    const fast = fakeServices();
+    await render((network) => network.key === "unichain-sepolia" ? slow : fast);
+    await click(document.querySelector<HTMLElement>(".uni-network-button")!);
+    await click(containing("Arc Testnet", ".uni-network-menu button") as HTMLElement);
+    const stat = () => document.querySelector(".uni-stat strong")?.textContent;
+    const shown = stat();
+    const stale = makeBook();
+    stale.custody = [1n, 1n, 1n, 1n];
+    await act(async () => releaseOld(stale));
+    await flush();
+    expect(stat()).toBe(shown);
+  });
+
+  it("A-2: Max fills the exact balance, even beyond float precision", async () => {
+    const balances = [0n, 0n, 0n, 0n];
+    balances[idx("USDC")] = 9_007_199_254_740_993n;
+    await render(fakeServices(makeBook(), makeAccount({ balances })), walletHost());
+    await connectWallet();
+    await click(byText("Max", ".uni-max"));
+    expect((document.querySelector("input[aria-label='Sell amount']") as HTMLInputElement).value).toBe("9007199254.740993");
+  });
+
+  it("A-3: a receipt that times out stays pending instead of offering a second swap", async () => {
+    const account = makeAccount({ balances: [MAX, MAX, MAX, MAX], routerAllowances: [MAX, MAX, MAX, MAX] });
+    const services = fakeServices(makeBook(), account);
+    services.waitForReceipt = vi.fn(async () => "timeout" as const);
+    await render(services, walletHost());
+    await connectWallet();
+    await chooseToken("Buy", "DAI");
+    await type("Sell amount", "1000");
+    await click(mainButton());
+    await click(byText("Swap", ".uni-modal button"));
+    const modal = document.querySelector(".uni-modal")?.textContent ?? "";
+    expect(modal).not.toMatch(/Swap failed|Try again/);
+    expect(modal).toMatch(/still pending/i);
+    expect(document.querySelector(".uni-toast")?.className).toContain("pending");
+  });
+
+  it("A-4: approves exactly the amount being swapped, not an unlimited allowance", async () => {
+    const account = makeAccount({ balances: [MAX, MAX, MAX, MAX] });
+    const services = fakeServices(makeBook(), account);
+    await render(services, walletHost());
+    await connectWallet();
+    await chooseToken("Buy", "DAI");
+    await type("Sell amount", "1000");
+    await click(mainButton());
+    const approve = (services.send as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(approve.functionName).toBe("approve");
+    expect(approve.args[1]).toBe(units("USDC", 1000n));
+  });
+
+  it("A-5: a toast keeps its own network's explorer link after switching networks", async () => {
+    const account = makeAccount({ balances: [MAX, MAX, MAX, MAX] });
+    await render(() => fakeServices(makeBook(), account), walletHost());
+    await connectWallet();
+    await chooseToken("Buy", "DAI");
+    await type("Sell amount", "1000");
+    await click(mainButton());
+    const link = () => document.querySelector<HTMLAnchorElement>(".uni-toast a")?.href ?? "";
+    expect(link()).toContain("unichain-sepolia.blockscout.com/tx/");
+    await click(document.querySelector<HTMLElement>(".uni-network-button")!);
+    await click(containing("Arc Testnet", ".uni-network-menu button") as HTMLElement);
+    expect(link()).toContain("unichain-sepolia.blockscout.com/tx/");
+  });
+
+  it("A-5: switching wallet accounts hides the previous account's balances", async () => {
+    const balances = [0n, 0n, 0n, 0n];
+    balances[idx("USDC")] = units("USDC", 5_000n);
+    const services = fakeServices(makeBook(), makeAccount({ balances }));
+    const { host, emit } = eventfulWalletHost();
+    await render(services, host);
+    await connectWallet();
+    expect(document.querySelector(".uni-balance")?.textContent).toContain("5,000");
+    services.readAccount = vi.fn(() => new Promise<AccountState>(() => {}));
+    await emit("accountsChanged", ["0x000000000000000000000000000000000000c0DE"]);
+    await flush();
+    expect(document.querySelector(".uni-balance")?.textContent ?? "").not.toContain("5,000");
+  });
+
+  it("A-7: liquidity actions wait for the preview of the amount now selected", async () => {
+    history.replaceState({}, "", "/app/pools/unichain-sepolia");
+    const account = makeAccount({ balances: [MAX, MAX, MAX, MAX], hookAllowances: [MAX, MAX, MAX, MAX] });
+    const services = fakeServices(makeBook(), account);
+    await render(services, walletHost());
+    await connectWallet();
+    await click(containing("New position"));
+    await click(containing("Range 2", ".uni-range-option"));
+    expect(mainButton().textContent).toBe("Add liquidity");
+    services.previewLiquidity = vi.fn(() => new Promise<bigint[]>(() => {}));
+    await click(containing("1% of range", ".uni-segment button"));
+    expect(mainButton().disabled).toBe(true);
+  });
+
+  it("A-8: warns on the swap page when the pool can no longer be read", async () => {
+    const services = fakeServices();
+    services.readBook = vi.fn(async () => { throw new Error("rpc down"); });
+    await render(services);
+    expect(document.querySelector(".uni-book-error")?.textContent).toMatch(/could not read/i);
   });
 });

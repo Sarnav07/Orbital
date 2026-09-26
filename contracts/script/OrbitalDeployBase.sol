@@ -2,7 +2,9 @@
 pragma solidity 0.8.30;
 
 import {Script} from "forge-std/Script.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
@@ -13,6 +15,16 @@ import {HookAddressMiner} from "../src/deploy/HookAddressMiner.sol";
 
 interface IERC20Decimals {
     function decimals() external view returns (uint8);
+}
+
+interface IERC20Metadata is IERC20Decimals {
+    function symbol() external view returns (string memory);
+}
+
+/// @dev The demo's mock tokens (solmate MockERC20) expose a public mint and approve.
+interface IMockToken {
+    function mint(address to, uint256 amount) external;
+    function approve(address spender, uint256 amount) external returns (bool);
 }
 
 struct OrbitalDeployment {
@@ -90,12 +102,59 @@ abstract contract OrbitalDeployBase is Script {
             )
         );
         bytes32 initCodeHash = keccak256(initCode);
-        bytes32 salt = HookAddressMiner.find(
-            CREATE2_FACTORY, initCodeHash, OrbitalDemoConfig.FLAGS, OrbitalDemoConfig.MAX_MINING_ATTEMPTS
-        );
-        address expected = HookAddressMiner.compute(CREATE2_FACTORY, salt, initCodeHash);
+        // Identical bytecode and arguments mine to the same address; step past any address in use.
+        bytes32 salt;
+        address expected;
+        uint256 start;
+        do {
+            salt = HookAddressMiner.findFrom(
+                CREATE2_FACTORY, initCodeHash, OrbitalDemoConfig.FLAGS, start, OrbitalDemoConfig.MAX_MINING_ATTEMPTS
+            );
+            expected = HookAddressMiner.compute(CREATE2_FACTORY, salt, initCodeHash);
+            start = uint256(salt) + 1;
+        } while (expected.code.length != 0);
         (bool success,) = CREATE2_FACTORY.call(abi.encodePacked(salt, initCode));
         require(success && expected.code.length > 0, "hook deployment failed");
         hook = OrbitalV4Hook(expected);
+    }
+
+    /// @dev Initializes the six canonical pair pools of `hook` at a 1:1 price (the hook prices every swap).
+    function _initializePools(IPoolManager manager, OrbitalV4Hook hook, Currency[4] memory currencies) internal {
+        for (uint8 a; a < 4; ++a) {
+            for (uint8 b = a + 1; b < 4; ++b) {
+                PoolKey memory key = PoolKey({
+                    currency0: currencies[a],
+                    currency1: currencies[b],
+                    fee: OrbitalDemoConfig.FEE,
+                    tickSpacing: OrbitalDemoConfig.TICK_SPACING,
+                    hooks: IHooks(address(hook))
+                });
+                manager.initialize(key, OrbitalDemoConfig.SQRT_PRICE_1_1);
+            }
+        }
+    }
+
+    function _writeDeployment(OrbitalDeployment memory deployment, string memory path) internal {
+        string memory key = "deployment";
+        vm.serializeUint(key, "chainId", block.chainid);
+        vm.serializeAddress(key, "poolManager", address(deployment.manager));
+        vm.serializeAddress(key, "hook", address(deployment.hook));
+        vm.serializeAddress(key, "feeBook", address(deployment.hook.feeBook()));
+        vm.serializeAddress(key, "router", address(deployment.router));
+        vm.serializeUint(key, "fee", OrbitalDemoConfig.FEE);
+        vm.serializeInt(key, "tickSpacing", OrbitalDemoConfig.TICK_SPACING);
+        address[] memory currencies = new address[](4);
+        string[] memory symbols = new string[](4);
+        uint256[] memory decimals = new uint256[](4);
+        for (uint256 i; i < 4; ++i) {
+            IERC20Metadata token = IERC20Metadata(Currency.unwrap(deployment.currencies[i]));
+            currencies[i] = address(token);
+            symbols[i] = token.symbol();
+            decimals[i] = token.decimals();
+        }
+        vm.serializeString(key, "symbols", symbols);
+        vm.serializeUint(key, "decimals", decimals);
+        string memory json = vm.serializeAddress(key, "currencies", currencies);
+        vm.writeJson(json, path);
     }
 }

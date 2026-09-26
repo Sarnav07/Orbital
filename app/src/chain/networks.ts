@@ -54,7 +54,7 @@ export const NETWORKS: Network[] = [
     name: "Arc Testnet",
     chain: arcTestnet,
     rpcUrl: env.VITE_ARC_TESTNET_RPC_URL ?? "https://rpc.testnet.arc.network",
-    explorer: "https://testnet.arcscan.app",
+    explorer: "https://explorer.testnet.arc.io",
     icon: "/networks/arc.png",
     deployment: arcDeployment as Deployment,
   },

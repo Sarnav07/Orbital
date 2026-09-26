@@ -23,18 +23,33 @@ contract FixedPointMathTest is Test {
         assertEq(harness.mulDivDown(x, y, denominator), FullMath.mulDiv(x, y, denominator));
     }
 
-    /// KNOWN ISSUE (docs/results/static-analysis.md, finding SA-1): the 512-bit branch uses
-    /// checked arithmetic where the algorithm needs wrapping, so it reverts instead of
-    /// returning FullMath's result. It fails closed and is unreachable within the protocol's
-    /// bounds. The fix is to move that branch into `unchecked`, deferred to the next
-    /// deployment so the deployed bytecode keeps matching source. When fixed, this test
-    /// should assert equality with FullMath instead.
-    function testKnownIssueWideProductBranchRevertsInsteadOfWrapping() public {
+    /// Formerly SA-1: the 512-bit branch was checked arithmetic and reverted with Panic(0x11)
+    /// instead of wrapping. It must now equal FullMath wherever the result fits in 256 bits.
+    function testWideProductBranchMatchesFullMath() public view {
         uint256 x = 2 ** 200;
         uint256 y = 2 ** 100 + 12_345;
         uint256 denominator = 2 ** 90 + 7;
-        assertGt(FullMath.mulDiv(x, y, denominator), 0);
-        vm.expectRevert(abi.encodeWithSignature("Panic(uint256)", 0x11));
-        harness.mulDivDown(x, y, denominator);
+        assertEq(harness.mulDivDown(x, y, denominator), FullMath.mulDiv(x, y, denominator));
+    }
+
+    function testFuzzWideProductsMatchFullMath(uint256 x, uint256 y, uint256 denominator) public view {
+        x = bound(x, 2 ** 128, type(uint256).max);
+        y = bound(y, 2 ** 128, type(uint256).max);
+        denominator = bound(denominator, 1, type(uint256).max);
+        (bool fits, uint256 expected) = _fullMath(x, y, denominator);
+        if (!fits) return;
+        assertEq(harness.mulDivDown(x, y, denominator), expected);
+    }
+
+    function _fullMath(uint256 x, uint256 y, uint256 denominator) private view returns (bool, uint256) {
+        try this.fullMathExternal(x, y, denominator) returns (uint256 value) {
+            return (true, value);
+        } catch {
+            return (false, 0);
+        }
+    }
+
+    function fullMathExternal(uint256 x, uint256 y, uint256 denominator) external pure returns (uint256) {
+        return FullMath.mulDiv(x, y, denominator);
     }
 }

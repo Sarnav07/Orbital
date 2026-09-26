@@ -80,3 +80,31 @@ test("rejects invalid and unsupported quote domains", () => {
   );
   assert.throws(() => quote(10n ** 29n), QuoteError);
 });
+
+// Regression for SegmentedTorus4 M-1: a trade that ends exactly on a range's plane must not
+// leave that range stuck; the next trade away from the plane flips it first.
+const demoTicks = () => [1001n, 1004n, 1050n].map((permille) => ({ radius: 10_000_000n * WAD, k: 10_000n * WAD * permille, isInterior: true }));
+const demoReserves = () => Array(4).fill(15_000_000n * WAD);
+
+function smallestCrossingInput(ticks, reserves, input, output, high) {
+  let low = 1n;
+  while (low < high) {
+    const middle = low + (high - low) / 2n;
+    const result = quote(middle, input, output, ticks.map((tick) => ({ ...tick })), reserves);
+    if (result.crossings > 0) high = middle;
+    else low = middle + 1n;
+  }
+  return low;
+}
+
+test("restores a range after a trade that ended exactly on its plane", () => {
+  const amount = smallestCrossingInput(demoTicks(), demoReserves(), 2, 3, 5_000_000n * WAD);
+  const landed = quote(amount, 2, 3, demoTicks(), demoReserves());
+  assert.equal(landed.crossings, 1);
+  assert.equal(landed.interiorBitmap, 6n);
+
+  const ticks = demoTicks().map((tick, index) => ({ ...tick, isInterior: (landed.interiorBitmap & (1n << BigInt(index))) !== 0n }));
+  const back = quoteExactIn({ state: landed.state, ticks, reserves: landed.reserves, input: 3, output: 2, amountIn: 1_000n * WAD });
+  assert.equal(back.interiorBitmap, 7n, "range 0 must be interior again once the book moves back inside its band");
+  assert.equal(isInvariant(back.state, back.reserves), true);
+});

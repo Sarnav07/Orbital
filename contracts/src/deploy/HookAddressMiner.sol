@@ -11,7 +11,16 @@ library HookAddressMiner {
         pure
         returns (bytes32 salt)
     {
-        for (uint256 nonce; nonce < maxAttempts; ++nonce) {
+        return findFrom(deployer, initCodeHash, requiredFlags, 0, maxAttempts);
+    }
+
+    /// @notice Like `find`, starting the search at salt `start` (to step past an address already in use).
+    function findFrom(address deployer, bytes32 initCodeHash, uint160 requiredFlags, uint256 start, uint256 maxAttempts)
+        internal
+        pure
+        returns (bytes32 salt)
+    {
+        for (uint256 nonce = start; nonce < start + maxAttempts; ++nonce) {
             salt = bytes32(nonce);
             if ((uint160(compute(deployer, salt, initCodeHash)) & ALL_HOOK_MASK) == requiredFlags) return salt;
         }

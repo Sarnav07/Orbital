@@ -15,6 +15,7 @@ import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 
 import {DeployOrbitalDemo} from "../script/DeployOrbitalDemo.s.sol";
 import {DeployOrbitalHook} from "../script/DeployOrbitalHook.s.sol";
+import {RedeployOrbitalHook} from "../script/RedeployOrbitalHook.s.sol";
 import {OrbitalDeployment, OrbitalDemoConfig} from "../script/OrbitalDeployBase.sol";
 import {OrbitalV4Hook} from "../src/OrbitalV4Hook.sol";
 
@@ -93,6 +94,61 @@ contract DeployOrbitalDemoTest is Test {
             assertEq(hook.decimalsAt(i), token.decimals());
             if (i > 0) assertTrue(Currency.unwrap(hook.currencyAt(i - 1)) < address(token));
         }
+    }
+
+    /// A fixed hook replaces the old one on a live network without new tokens or a new router,
+    /// so wallets keep the token addresses they already imported.
+    function testRedeployScriptReusesTokensAndRouterAndSeedsANewHook() public {
+        OrbitalDeployment memory old = new DeployOrbitalDemo().deploy(DEPLOYER_KEY, address(0));
+        address[4] memory tokens;
+        for (uint256 i; i < 4; ++i) {
+            tokens[i] = Currency.unwrap(old.currencies[3 - i]); // any order
+        }
+
+        OrbitalV4Hook hook = new RedeployOrbitalHook().deploy(DEPLOYER_KEY, old.manager, tokens);
+
+        assertTrue(address(hook) != address(old.hook));
+        assertEq(uint160(address(hook)) & Hooks.ALL_HOOK_MASK, OrbitalDemoConfig.FLAGS);
+        assertTrue(hook.seeded());
+        assertEq(hook.owner(), vm.addr(DEPLOYER_KEY));
+        for (uint8 i; i < 4; ++i) {
+            assertEq(Currency.unwrap(hook.currencyAt(i)), Currency.unwrap(old.currencies[i]));
+        }
+        (uint256[4] memory custody, uint256[4] memory required) = hook.solvency();
+        for (uint256 i; i < 4; ++i) {
+            assertGe(custody[i], required[i]);
+            assertGt(required[i], 0);
+        }
+        for (uint8 a; a < 4; ++a) {
+            for (uint8 b = a + 1; b < 4; ++b) {
+                (uint160 sqrtPriceX96,,,) = old.manager.getSlot0(_key(hook, a, b).toId());
+                assertGt(sqrtPriceX96, 0);
+            }
+        }
+
+        // The existing router serves the new hook, with the app's slippage/deadline guard.
+        address trader = makeAddr("trader");
+        MockERC20 input = MockERC20(Currency.unwrap(hook.currencyAt(0)));
+        MockERC20 output = MockERC20(Currency.unwrap(hook.currencyAt(3)));
+        uint256 amountIn = 1_000 * 10 ** input.decimals();
+        input.mint(trader, amountIn);
+        vm.startPrank(trader);
+        input.approve(address(old.router), amountIn);
+        old.router
+            .swap(
+                _key(hook, 0, 3),
+                SwapParams({
+                    zeroForOne: true,
+                    // 1,000 tokens, exactly representable as int256.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    amountSpecified: -int256(amountIn),
+                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+                abi.encode(uint256(999 * 10 ** output.decimals()), block.timestamp + 600)
+            );
+        vm.stopPrank();
+        assertGt(output.balanceOf(trader), 999 * 10 ** output.decimals());
     }
 
     function _key(OrbitalV4Hook hook, uint8 a, uint8 b) private view returns (PoolKey memory) {

@@ -1,4 +1,4 @@
-import { encodeAbiParameters, maxUint256, type Address } from "viem";
+import { encodeAbiParameters, type Address } from "viem";
 import { hookAbi, routerAbi, tokenAbi } from "./abi";
 import type { Deployment } from "./config";
 
@@ -35,7 +35,8 @@ export const mintRequest = (deployment: Deployment, asset: number, to: Address, 
   address: deployment.currencies[asset], abi: tokenAbi, functionName: "mint" as const, args: [to, amount] as const,
 });
 
-export const approveRequest = (deployment: Deployment, asset: number, spender: Address, amount = maxUint256) => ({
+/** Approves exactly `amount`: never an unlimited allowance to the test router or the hook. */
+export const approveRequest = (deployment: Deployment, asset: number, spender: Address, amount: bigint) => ({
   address: deployment.currencies[asset], abi: tokenAbi, functionName: "approve" as const, args: [spender, amount] as const,
 });
 
