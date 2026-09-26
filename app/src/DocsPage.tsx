@@ -11,7 +11,7 @@ const COINS = ["USDC", "USDT", "DAI", "FRAX"] as const;
 
 /** Sidebar structure: three chapter groups, each linking to a section id on this page. */
 export const docsChapters = [
-  { label: "Understand the protocol", links: [["overview", "Overview"], ["shared-book", "One book, six pools"], ["custody", "Where the tokens live"], ["curve", "The Orbital curve"]] },
+  { label: "Understand the protocol", links: [["overview", "Overview"], ["shared-book", "One book, six pools"], ["custody", "Where the tokens live"], ["curve", "The Orbital curve"], ["math", "The mathematics"]] },
   { label: "Use Orbital", links: [["swaps", "How a swap settles"], ["fees", "Fees & slippage"], ["liquidity", "Providing liquidity"], ["depegs", "When a coin depegs"]] },
   { label: "Go deeper", links: [["execution", "Under the hood"], ["contracts", "Deployed contracts"], ["questions", "Common questions"], ["glossary", "Glossary"], ["further-reading", "Further reading"]] },
 ] as const;
@@ -20,6 +20,14 @@ const ranges = createSandboxState().ticks.map((tick) => {
   const ratio = Number(tick.k * 1000n / tick.radius) / 1000;
   return { ratio, trap: singleDepegTrapPrice(ratio) };
 });
+
+/** A README diagram or animation (served from /guide), framed like the guide's other figures. */
+function DocFigure({ src, alt, caption }: { src: string; alt: string; caption: string }) {
+  return <figure className="dg-figure dg-media">
+    <img src={`/guide/${src}`} alt={alt} loading="lazy" />
+    <figcaption><p>{caption}</p></figcaption>
+  </figure>;
+}
 
 function Contents() {
   return <nav aria-label="Documentation sections">{docsChapters.map((chapter) => <div className="dg-chapter" key={chapter.label}>
@@ -82,6 +90,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
           <p>Orbital is a Uniswap v4 hook. Every pool it serves draws on the same n-asset reserve book, which is priced by Paradigm's n-dimensional Orbital geometry. The deployment described here is the live 4-coin book (USDC, USDT, DAI and FRAX across six pools), running as its own pool on Unichain Sepolia, Ethereum Sepolia, Arbitrum Sepolia and Arc Testnet. Liquidity providers choose a <a href="#glossary">range</a> that sets how tightly their capital concentrates around the peg. Traders swap through any pool, and the hook settles every trade inside the v4 PoolManager.</p>
           <div className="dg-thesis"><span aria-hidden="true">↗</span><p>The key idea: <strong>a pool is only an entry point. The liquidity is the shared book.</strong> A USDC/DAI trade and a USDT/FRAX trade move the same state.</p></div>
           <div className="dg-intro-links"><a href="#shared-book">Start with the idea →</a><a href="#swaps">Follow a swap →</a></div>
+          <DocFigure src="overview.png" alt="A trader pays USDC and receives DAI through the Orbital reserve book, while liquidity providers deposit into ranges around one dollar" caption="One book behind every pair. Traders swap any coin for any other; liquidity providers choose a range around $1 and earn fees from every pool." />
         </header>
 
         <section id="shared-book" aria-labelledby="shared-title">
@@ -89,6 +98,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
           <p>n stablecoins make n(n − 1)/2 pairs: six for four coins, twenty-eight for eight. A pair-per-pool design splits deposits that many ways, so each pool is shallower than the basket could be. Orbital registers every canonical pair pool against one hook and keeps a single n-asset reserve vector behind them. The deployed book has four coins, so it has six pools.</p>
           <p>A USDC → DAI swap changes what the book holds. A later FRAX → USDT swap starts from that updated state. Only the two coins in a trade move; the other two coordinates stay put.</p>
           <PoolDiagram />
+          <DocFigure src="anim-shared-book.svg" alt="Animation: a USDC to DAI trade and a USDT to FRAX trade on two different pools both move the same reserve book" caption="Two trades on two different v4 pools move the same reserve vector: the pools are doors, the book is shared." />
         </section>
 
         <section id="custody" aria-labelledby="custody-title">
@@ -128,6 +138,33 @@ export function DocsPage({ navigate }: { navigate: Go }) {
           </div></details>
         </section>
 
+        <section id="math" aria-labelledby="math-title">
+          <p className="dg-label">The geometry, in detail</p><h2 id="math-title">The <em>mathematics.</em></h2>
+          <p>Orbital follows Paradigm's Orbital paper. The figures below are our own renderings of its geometry, restated for this deployment, which fixes four coins so that every square root of n is exact in fixed point.</p>
+          <h3>The sphere, and a range on it</h3>
+          <p>The book's reserves live on one sphere. At its centre, the equal-price point, every pair trades 1:1. A range is the part of that sphere on one side of a boundary plane; along it, no coin can fall below the range's <strong>virtual offset</strong>, so only the reserves above that offset are real capital the LP has to supply.</p>
+          <DocFigure src="math-sphere.png" alt="Two-asset slice of the reserve sphere with the equal-price point, a boundary plane and the virtual offset" caption="Two-asset slice for intuition: the plane cuts a cap out of the sphere, and x_min is the part of each coin the range never has to hold." />
+          <h3>Capital efficiency, and where ranges trap</h3>
+          <p>A tighter range carries a larger virtual offset, so the same real capital buys far more depth at the peg. The deployed ranges are <strong>13.1×</strong>, <strong>6.6×</strong> and <strong>2.0×</strong> as efficient as a full-range position, and on a single-coin depeg they reach their boundaries near <strong>$0.90</strong>, <strong>$0.80</strong> and <strong>$0.36</strong>.</p>
+          <DocFigure src="math-efficiency.png" alt="Capital efficiency against range position, marking the three deployed ranges" caption="Plotted from the exact formula. The narrowest range is 13.1× as capital-efficient and traps first." />
+          <h3>Every range, one torus</h3>
+          <p>Ranges that are still trading share one direction, so their radii simply add. Ranges at their boundary are pinned to their planes and add a fixed offset. The whole book is therefore one torus, whatever the number of ranges, and the hook solves each swap against that single equation. When a trade pushes the book across a range's plane, the hook solves exactly to the plane, flips that range, rebuilds the torus and finishes the trade.</p>
+          <DocFigure src="math-torus.png" alt="Interior ranges add into one sphere and boundary ranges add a fixed offset, forming a torus" caption="Interior radii add; boundary ranges add an offset. One equation covers the whole book." />
+          <h3>Fees, rounding and solvency</h3>
+          <ul className="dg-list">
+            <li><strong>Fee:</strong> 0.05% of the input, rounded up, split across the ranges that were in range when the swap started, in proportion to their size.</li>
+            <li><strong>Rounding:</strong> inputs round up, payouts round down, and liquidity changes round in the pool's favour.</li>
+            <li><strong>Solvency:</strong> the hook's PoolManager claims always cover every range's redeemable inventory plus unpaid fees; fuzzed invariant tests check this over random swaps, deposits, withdrawals and fee collection.</li>
+          </ul>
+          <h3>Fixed-point implementation</h3>
+          <ul className="dg-list">
+            <li>18-decimal fixed point; square roots round down.</li>
+            <li>Each quote scans 48 intervals, then bisects up to 96 times, accepting a state within a 1e-9 relative residual.</li>
+            <li>At most 16 ranges and 8 crossing segments per swap.</li>
+            <li>Measured gas: about <strong>1.22M</strong> for an ordinary swap, <strong>3.15M</strong> when one range traps and <strong>4.81M</strong> when two do; about <strong>332k</strong> to add and <strong>178k</strong> to remove 1% of a range.</li>
+          </ul>
+        </section>
+
         <section id="swaps" aria-labelledby="swaps-title">
           <p className="dg-label">For traders</p><h2 id="swaps-title">From quote <em>to settlement.</em></h2>
           <p>You choose an exact input amount. The app reads the live book and runs the same arithmetic as the hook, so the quote equals what the hook will pay if nothing trades first. The transaction carries the limits that protect you if something does.</p>
@@ -137,6 +174,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
             <li><div><h3>Swap with a minimum and a deadline</h3><p>The app encodes <code>minAmountOut</code> and a deadline as hook data and simulates the call before your wallet signs.</p></div></li>
             <li><div><h3>The hook settles in the PoolManager</h3><p><code>beforeSwap</code> charges the fee, prices the trade across any range crossings, takes your input as claims and pays your output. If a check fails, the transaction reverts.</p></div></li>
           </ol>
+          <DocFigure src="seq-swap.png" alt="Sequence diagram of a swap through the router, PoolManager, Orbital hook and swap engine" caption="The full call path. The core v4 pool never trades: the hook consumes the whole input in beforeSwap and settles against the claims it holds." />
           <a className="dg-text-link" href="/app" onClick={go("app")}>Try a swap →</a>
         </section>
 
@@ -165,6 +203,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
           <p>Liquidity goes to one range. You buy shares of it by depositing that range's current basket of all four coins, in the exact amounts the hook previews. Native v4 liquidity positions are rejected on these pools.</p>
           <div className="dg-lifecycle" aria-label="Liquidity sequence"><span>Approve</span><span aria-hidden="true">→</span><span>Preview</span><span aria-hidden="true">→</span><span>Add liquidity</span><span aria-hidden="true">→</span><span>Collect / remove</span></div>
           <p>Each swap's fee is shared by the ranges that were earning when it started, in proportion to their size, and tracked per share. New shares cannot claim earlier fees. You can collect fees at any time, and you can remove liquidity for that range's current inventory. Rounding always favours the pool, by at most a few units.</p>
+          <DocFigure src="seq-liquidity.png" alt="Sequence diagram of adding liquidity, removing liquidity and collecting fees" caption="Adding, removing and collecting. Every step settles through the hook's own PoolManager unlock, and withdrawals return only that range's inventory." />
           <p className="dg-aside"><strong>Concentration changes your exposure.</strong> A narrow range earns more of the trading near the peg, but if a coin depegs it can end up holding more of the weak coin. A range is not a guaranteed dollar floor or return.</p>
           <a className="dg-text-link" href="/app" onClick={go("app")}>Explore liquidity →</a>
         </section>
@@ -172,6 +211,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
         <section id="depegs" aria-labelledby="depegs-title">
           <p className="dg-label">Stress</p><h2 id="depegs-title">When one coin <em>breaks.</em></h2>
           <p>If a coin loses its peg, traders sell it into the book. As they do, narrow ranges reach their boundary first. A trapped range stops taking in the failing coin, which caps its exposure, while wider ranges keep trading.</p>
+          <DocFigure src="anim-range-trap.svg" alt="Animation: as one coin depegs, Range 1 traps at 90 cents and Range 2 at 80 cents while Range 3 keeps trading, then they recover" caption="A coin depegs and recovers. Each range turns to Boundary at its own trap price and comes back as the price returns, while the wide range keeps trading." />
           <div className="dg-definitions">{ranges.map((range, index) => <div key={index}><h3>Range {index + 1} · k/r {range.ratio.toFixed(3)}</h3><p>{range.trap === null ? "Never traps on a single-coin depeg." : `Traps near $${range.trap.toFixed(2)} for a single-coin depeg.`}</p></div>)}</div>
           <p>If a trade would trap every range at once, the prototype reverts it rather than guess. The Sandbox's <a href="/app" onClick={go("app")}>depeg stress model</a> walks through this step by step on the deployed parameters.</p>
         </section>
@@ -244,6 +284,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
           <p className="dg-label">Keep exploring</p><h2 id="reading-title">From idea <em>to evidence.</em></h2>
           <div className="dg-reading-links">
             <a href="https://www.paradigm.xyz/writing/orbital" target="_blank" rel="noreferrer"><span><strong>The Orbital paper</strong><small>The original geometric model by Dan Robinson, Ciamac Moallemi and Dave White.</small></span>↗</a>
+            <a href="https://github.com/Sarnav07/Orbital#readme" target="_blank" rel="noreferrer"><span><strong>The README</strong><small>The full technical write-up: architecture, diagrams, the mathematics and contract interfaces.</small></span>↗</a>
             <a href={`${REPO}/contracts/src/OrbitalV4Hook.sol`} target="_blank" rel="noreferrer"><span><strong>Hook implementation</strong><small>The Solidity source that implements the geometry.</small></span>↗</a>
             <a href={`${REPO}/contracts/test`} target="_blank" rel="noreferrer"><span><strong>Test suite</strong><small>Every property checked, including PoolManager integration and fuzzing.</small></span>↗</a>
           </div>

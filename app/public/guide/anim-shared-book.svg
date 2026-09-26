@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="400" viewBox="0 0 880 400" font-family="Arial, Helvetica, sans-serif">
+  <!-- Two trades on different v4 pools move the SAME reserve vector: one shared book. Loops every 9 s. -->
+  <rect width="880" height="400" rx="16" fill="#121212"/>
+  <text x="440" y="40" fill="#e9e9ef" font-size="20" font-weight="700" text-anchor="middle">Different pools, one reserve book</text>
+
+  <!-- Pool badges (light up in turn) -->
+  <g>
+    <rect x="46" y="70" width="230" height="52" rx="12" fill="#1d1d24" stroke="#3a3a46"/>
+    <text x="161" y="93" fill="#e9e9ef" font-size="15" font-weight="700" text-anchor="middle">USDC → DAI</text>
+    <text x="161" y="112" fill="#8a8c9b" font-size="12" text-anchor="middle">v4 pool 1 of 6</text>
+    <rect x="46" y="70" width="230" height="52" rx="12" fill="none" stroke="#9b87ff" stroke-width="2.5" opacity="0">
+      <animate attributeName="opacity" dur="9s" repeatCount="indefinite" calcMode="discrete" values="0;1;0" keyTimes="0;0.1;0.45"/>
+    </rect>
+  </g>
+  <g>
+    <rect x="604" y="70" width="230" height="52" rx="12" fill="#1d1d24" stroke="#3a3a46"/>
+    <text x="719" y="93" fill="#e9e9ef" font-size="15" font-weight="700" text-anchor="middle">USDT → FRAX</text>
+    <text x="719" y="112" fill="#8a8c9b" font-size="12" text-anchor="middle">v4 pool 2 of 6</text>
+    <rect x="604" y="70" width="230" height="52" rx="12" fill="none" stroke="#9b87ff" stroke-width="2.5" opacity="0">
+      <animate attributeName="opacity" dur="9s" repeatCount="indefinite" calcMode="discrete" values="0;1;0" keyTimes="0;0.45;0.8"/>
+    </rect>
+  </g>
+
+  <!-- Arrows from both pools into the one book -->
+  <path d="M 200 124 C 230 160, 270 170, 300 180" fill="none" stroke="#5b5d6b" stroke-width="2" stroke-dasharray="5 5"/>
+  <path d="M 680 124 C 650 160, 610 170, 580 180" fill="none" stroke="#5b5d6b" stroke-width="2" stroke-dasharray="5 5"/>
+
+  <!-- The book -->
+  <rect x="290" y="150" width="300" height="220" rx="16" fill="#18181f" stroke="#9b87ff" stroke-width="2"/>
+  <text x="440" y="176" fill="#9b87ff" font-size="13" font-weight="700" text-anchor="middle" letter-spacing="1.5">ONE RESERVE BOOK</text>
+  <line x1="310" y1="330" x2="570" y2="330" stroke="#3a3a46"/>
+
+  <!-- Reserve bars: USDC, USDT, DAI, FRAX (baseline y = 330, rest height 110) -->
+  <rect x="320" y="220" width="46" height="110" rx="6" fill="#2775ca">
+    <animate attributeName="height" dur="9s" repeatCount="indefinite" values="110;110;140;140;110" keyTimes="0;0.1;0.3;0.85;1"/>
+    <animate attributeName="y" dur="9s" repeatCount="indefinite" values="220;220;190;190;220" keyTimes="0;0.1;0.3;0.85;1"/>
+  </rect>
+  <rect x="384" y="220" width="46" height="110" rx="6" fill="#26a17b">
+    <animate attributeName="height" dur="9s" repeatCount="indefinite" values="110;110;140;140;110" keyTimes="0;0.45;0.65;0.85;1"/>
+    <animate attributeName="y" dur="9s" repeatCount="indefinite" values="220;220;190;190;220" keyTimes="0;0.45;0.65;0.85;1"/>
+  </rect>
+  <rect x="448" y="220" width="46" height="110" rx="6" fill="#f5ac37">
+    <animate attributeName="height" dur="9s" repeatCount="indefinite" values="110;110;81;81;110" keyTimes="0;0.1;0.3;0.85;1"/>
+    <animate attributeName="y" dur="9s" repeatCount="indefinite" values="220;220;249;249;220" keyTimes="0;0.1;0.3;0.85;1"/>
+  </rect>
+  <rect x="512" y="220" width="46" height="110" rx="6" fill="#d9d9e3">
+    <animate attributeName="height" dur="9s" repeatCount="indefinite" values="110;110;81;81;110" keyTimes="0;0.45;0.65;0.85;1"/>
+    <animate attributeName="y" dur="9s" repeatCount="indefinite" values="220;220;249;249;220" keyTimes="0;0.45;0.65;0.85;1"/>
+  </rect>
+  <text x="343" y="352" fill="#c9cad6" font-size="13" text-anchor="middle">USDC</text>
+  <text x="407" y="352" fill="#c9cad6" font-size="13" text-anchor="middle">USDT</text>
+  <text x="471" y="352" fill="#c9cad6" font-size="13" text-anchor="middle">DAI</text>
+  <text x="535" y="352" fill="#c9cad6" font-size="13" text-anchor="middle">FRAX</text>
+
+  <!-- Side captions -->
+  <text x="46" y="230" fill="#a7a7b3" font-size="14">
+    <tspan x="46">Trade 1 moves only the</tspan><tspan x="46" dy="20">USDC and DAI coordinates</tspan>
+    <animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0.25;0.25;1;1;0.25;0.25" keyTimes="0;0.08;0.12;0.43;0.47;1"/>
+  </text>
+  <text x="834" y="230" fill="#a7a7b3" font-size="14" text-anchor="end">
+    <tspan x="834">Trade 2 uses another pool,</tspan><tspan x="834" dy="20">but the same book and depth</tspan>
+    <animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0.25;0.25;1;1;0.25;0.25" keyTimes="0;0.43;0.47;0.78;0.82;1"/>
+  </text>
+  <text x="46" y="330" fill="#6b6d7b" font-size="12.5"><tspan x="46">4 coins · 6 pools</tspan><tspan x="46" dy="18">1 shared book</tspan></text>
+</svg>

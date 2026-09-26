@@ -352,3 +352,13 @@ footer{border-color:var(--uni-surface3)!important;color:var(--uni-neutral2)!impo
 @media(max-width:620px){.manifesto,.protocol,.shared-hook,.sandbox-teaser{padding:48px 0!important}.manifesto-text{font-size:clamp(2.2rem,9.5vw,3rem)!important}.architecture-sticky{padding:48px 0 0!important}.gateway{padding:64px 24px!important}}
 @media(max-width:620px){.architecture:not(.reduced){height:auto!important}.architecture-sticky{position:relative!important;top:auto!important}}
 
+
+/* README diagrams and animations inside the docs guide */
+.dg-media{padding:14px 14px 12px}
+.dg-media img{display:block;width:100%;height:auto;border-radius:12px}
+.dg-media figcaption{margin-top:12px}
+.dg-media figcaption p{margin:0;color:var(--uni-neutral2);font-size:13px;line-height:1.6}
+.dg-article h3{margin:28px 0 8px}
+.dg-list{margin:12px 0 0;padding-left:20px;color:var(--uni-neutral2);line-height:1.7}
+.dg-list li{margin:4px 0}
+.dg-list strong{color:var(--uni-neutral1)}

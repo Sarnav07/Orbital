@@ -76,8 +76,6 @@ export default function SandboxPage() {
   };
   const reset = () => { setSandbox(createSandboxState()); setInput(0); setOutput(2); clear(); setSelected(0); setHistory([]); };
 
-  const sliderMax = Math.max(1, Number(maxInput / (10n ** 18n)));
-  const sliderValue = parsed.value ? Math.min(sliderMax, Number(parsed.value / (10n ** 18n))) : 0;
   const tvl = preview.reserves.reduce((sum, reserve) => sum + reserve, 0n);
 
   return <section className="sb" aria-labelledby="sb-title">
@@ -108,7 +106,6 @@ export default function SandboxPage() {
             <input aria-label="Exact input amount" inputMode="decimal" placeholder="0" value={amountText} onChange={(event) => setAmountText(event.target.value)} />
             <button type="button" className="sb-max" onClick={() => setAmountText(formatWad(maxInput, 0))} disabled={maxInput === 0n}>Max</button>
           </div>
-          <input className="sb-slider" aria-label="Input amount slider" type="range" min="0" max={sliderMax} step="1" value={sliderValue} onChange={(event) => setAmountText(event.target.value)} />
           <small>Max quotable {compactWad(maxInput)} {ASSETS[input]}</small>
         </div>
         <button type="button" className="sb-flip" onClick={flip} aria-label="Swap input and output assets">

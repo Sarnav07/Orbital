@@ -168,6 +168,8 @@ describe("Orbital landing experience", () => {
 
     const commit = container.querySelector<HTMLButtonElement>(".sb-commit")!;
     expect(commit.disabled).toBe(true);
+    // The amount is typed, not dragged: the swap card has no slider.
+    expect(container.querySelector(".sb-swap input[type='range']")).toBeNull();
     const amount = container.querySelector<HTMLInputElement>("input[aria-label='Exact input amount']")!;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(amount, "250000");
@@ -185,8 +187,13 @@ describe("Orbital landing experience", () => {
     const guide = container.querySelector(".dg")!;
     expect(guide).toBeTruthy();
     const anchors = [...guide.querySelectorAll(".dg-sidebar nav a")].map((node) => node.getAttribute("href")!.slice(1));
-    expect(anchors.length).toBe(13);
+    expect(anchors.length).toBe(14);
     for (const id of anchors) expect(container.querySelector(`#${id}`)).toBeTruthy();
+    // The guide carries the README's diagrams: the maths figures and the depeg animation.
+    const mathFigures = [...container.querySelectorAll<HTMLImageElement>("#math .dg-figure img")].map((node) => node.getAttribute("src"));
+    expect(mathFigures).toEqual(["/guide/math-sphere.png", "/guide/math-efficiency.png", "/guide/math-torus.png"]);
+    expect(container.querySelector("#depegs .dg-figure img")?.getAttribute("src")).toBe("/guide/anim-range-trap.svg");
+    expect(container.querySelector("#swaps .dg-figure img")?.getAttribute("src")).toBe("/guide/seq-swap.png");
 
     const select = container.querySelector<HTMLSelectElement>("#dg-direction")!;
     act(() => {
