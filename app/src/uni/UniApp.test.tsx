@@ -358,7 +358,7 @@ describe("Pools across networks", () => {
   });
 });
 
-// Regressions for the pre-submission audit (docs/AUDIT.md, findings A-1 … A-8).
+// Regressions found in the pre-submission security review, findings A-1 … A-8.
 function eventfulWalletHost(chainId = "0x515") {
   const listeners: Record<string, (value: unknown) => void> = {};
   const host = new EventTarget() as Host;

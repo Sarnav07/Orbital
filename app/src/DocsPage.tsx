@@ -124,7 +124,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
           <details><summary>A closer look at the curve</summary><div className="dg-details">
             <p>A single range is an n-dimensional sphere. With one coordinate per coin, its frontier satisfies:</p>
             <p className="dg-equation" aria-label="The sum over assets of radius minus reserve squared equals radius squared.">∑ (r − x<sub>i</sub>)<sup>2</sup> = r<sup>2</sup></p>
-            <p>A range adds a boundary plane <code>α = k</code>. Interior ranges combine into one sphere, and boundary ranges add a fixed offset. Together they form a torus. The geometry holds for any n. The deployed hook fixes n = 4, so √n = 2 is exact in WAD fixed point. The <a href={`${REPO}/docs/MATH.md`} target="_blank" rel="noreferrer">mathematical contract</a> derives each step, and the <a href="https://www.paradigm.xyz/writing/orbital" target="_blank" rel="noreferrer">Orbital paper</a> develops the geometry.</p>
+            <p>A range adds a boundary plane <code>α = k</code>. Interior ranges combine into one sphere, and boundary ranges add a fixed offset. Together they form a torus. The geometry holds for any n. The deployed hook fixes n = 4, so √n = 2 is exact in WAD fixed point. The <a href="https://www.paradigm.xyz/writing/orbital" target="_blank" rel="noreferrer">Orbital paper</a> develops the geometry.</p>
           </div></details>
         </section>
 
@@ -223,7 +223,7 @@ export function DocsPage({ navigate }: { navigate: Go }) {
             <details><summary>Why are approval and swap separate confirmations?</summary><div className="dg-details"><p>An approval changes how much a contract may spend. The swap is a separate transaction that actually exchanges coins. An existing allowance skips the approval.</p></div></details>
             <details><summary>Why can a quote fail or a swap revert?</summary><div className="dg-details"><p>The book may have moved past your minimum, the deadline may have passed, or the trade may be too large: it could trap every range or need more than eight crossings. The app explains the reason before you sign.</p></div></details>
             <details><summary>Are these real stablecoins?</summary><div className="dg-details"><p>No. They are mock tokens with a public mint and no value. Gas is paid in the network's native token (testnet ETH, or USDC on Arc from faucet.circle.com), available from public faucets.</p></div></details>
-            <details><summary>Has this been audited?</summary><div className="dg-details"><p>Not by a professional firm. It is a testnet prototype. An internal line-by-line security review (docs/AUDIT.md in the repository) found and fixed one High engine bug and several smaller issues, each with a test, before the current hooks were deployed. Static-analysis findings are triaged in the repository, and the known limits are listed in the implementation ledger.</p></div></details>
+            <details><summary>Has this been audited?</summary><div className="dg-details"><p>Not by a professional firm. It is a testnet prototype. An internal line-by-line security review found and fixed one High engine bug and several smaller issues, each with a test, before the current hooks were deployed. Static-analysis findings are triaged in the repository, and the known limits are listed in the implementation ledger.</p></div></details>
           </div>
         </section>
 
@@ -244,9 +244,8 @@ export function DocsPage({ navigate }: { navigate: Go }) {
           <p className="dg-label">Keep exploring</p><h2 id="reading-title">From idea <em>to evidence.</em></h2>
           <div className="dg-reading-links">
             <a href="https://www.paradigm.xyz/writing/orbital" target="_blank" rel="noreferrer"><span><strong>The Orbital paper</strong><small>The original geometric model by Dan Robinson, Ciamac Moallemi and Dave White.</small></span>↗</a>
-            <a href={`${REPO}/docs/MATH.md`} target="_blank" rel="noreferrer"><span><strong>Mathematical contract</strong><small>Every equation the hook implements, with requirement IDs.</small></span>↗</a>
-            <a href={`${REPO}/docs/PAPER_IMPLEMENTATION.md`} target="_blank" rel="noreferrer"><span><strong>Paper-to-implementation ledger</strong><small>Where each mechanism lives, what proves it, and what is still open.</small></span>↗</a>
-            <a href={`${REPO}/docs/TESTS.md`} target="_blank" rel="noreferrer"><span><strong>Acceptance tests</strong><small>Every case ID mapped to the test that runs it.</small></span>↗</a>
+            <a href={`${REPO}/contracts/src/OrbitalV4Hook.sol`} target="_blank" rel="noreferrer"><span><strong>Hook implementation</strong><small>The Solidity source that implements the geometry.</small></span>↗</a>
+            <a href={`${REPO}/contracts/test`} target="_blank" rel="noreferrer"><span><strong>Test suite</strong><small>Every property checked, including PoolManager integration and fuzzing.</small></span>↗</a>
           </div>
           <div className="dg-end"><span>You've got the idea. See it in action.</span><a href="/app" onClick={go("app")}>Open the app →</a><a href="#overview">Back to top ↑</a></div>
         </section>
