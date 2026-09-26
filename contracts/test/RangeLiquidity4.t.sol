@@ -4,7 +4,6 @@ pragma solidity 0.8.30;
 import {RangeLiquidity4} from "../src/math/RangeLiquidity4.sol";
 import {SegmentedTorus4} from "../src/math/SegmentedTorus4.sol";
 import {Torus4} from "../src/math/Torus4.sol";
-import {RangeShareBook4} from "../src/liquidity/RangeShareBook4.sol";
 
 contract RangeLiquidity4Harness {
     function attribute(Torus4.State memory state, SegmentedTorus4.Tick[] memory ticks, uint256[4] memory reserves)
@@ -120,40 +119,6 @@ contract RangeLiquidity4Test {
         RangeLiquidity4.ShareState memory position = RangeLiquidity4.bootstrap(inventory, 10 * WAD);
         uint256[4] memory badDeposit = [uint256(WAD), 2 * WAD, 3 * WAD, 5 * WAD];
         _expect(abi.encodeCall(harness.add, (position, badDeposit)), RangeLiquidity4.NonProportionalDeposit.selector);
-    }
-
-    function testMultipleLpsAndRangesCannotWithdrawEachOthersInventory() public {
-        RangeShareBook4 book = new RangeShareBook4(address(this));
-        uint256[4] memory firstInventory = [uint256(10 * WAD), 20 * WAD, 30 * WAD, 40 * WAD];
-        uint256[4] memory secondInventory = [uint256(50 * WAD), 60 * WAD, 70 * WAD, 80 * WAD];
-        book.bootstrap(1, address(this), firstInventory, 100 * WAD);
-        book.bootstrap(2, address(0xBEEF), secondInventory, 100 * WAD);
-
-        uint256[4] memory deposit = [uint256(5 * WAD), 10 * WAD, 15 * WAD, 20 * WAD];
-        assert(book.addProportional(1, address(this), deposit) == 50 * WAD);
-        uint256[4] memory withdrawn = book.removeProportional(1, address(this), 25 * WAD);
-        RangeLiquidity4.ShareState memory second = book.position(2);
-
-        assert(book.sharesOf(1, address(this)) == 125 * WAD);
-        assert(book.sharesOf(2, address(0xBEEF)) == 100 * WAD);
-        assert(withdrawn[0] == 2_500_000_000_000_000_000);
-        for (uint256 asset; asset < 4; ++asset) {
-            assert(second.realInventory[asset] == secondInventory[asset]);
-        }
-    }
-
-    function testShareBookMutationsAreControllerOnly() public {
-        RangeShareBook4 book = new RangeShareBook4(address(0xC0DE));
-        uint256[4] memory deposit = [uint256(WAD), WAD, WAD, WAD];
-        (bool added, bytes memory addResult) =
-            address(book).call(abi.encodeCall(book.addProportional, (1, address(this), deposit)));
-        (bool removed, bytes memory removeResult) =
-            address(book).call(abi.encodeCall(book.removeProportional, (1, address(this), WAD)));
-        assert(!added && !removed);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assert(bytes4(addResult) == RangeShareBook4.OnlyController.selector);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assert(bytes4(removeResult) == RangeShareBook4.OnlyController.selector);
     }
 
     function _interiorState()

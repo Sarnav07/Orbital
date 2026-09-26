@@ -6,11 +6,12 @@ Copy from here into the submission form. Fields marked **TODO (you)** need your 
 
 | Field | Value |
 | --- | --- |
-| Project | **Orbital: one reserve book for four stablecoins** |
-| One-liner | An experimental Uniswap v4 hook that lets USDC, USDT, DAI and FRAX trade through one shared, concentrated reserve book instead of six separately funded pair pools. |
+| Project | **Orbital: one reserve book for n stablecoins** |
+| One-liner | An experimental Uniswap v4 hook that trades n stablecoins through one shared, concentrated reserve book instead of n(n − 1)/2 separately funded pair pools. It is live as a 4-coin book on Unichain Sepolia. |
 | Repository | https://github.com/Sarnav07/Orbital |
-| Live app | https://orbital-protocol-mu.vercel.app/app (Testnet tab: live contracts; Sandbox tab: local model and depeg stress) |
-| Network | Unichain Sepolia (chain 1301) |
+| Live app | https://orbital-protocol-mu.vercel.app/app (Uniswap-style interface: Swap, Pools and Explore on the live contracts, with a network selector; Sandbox has the local model and depeg stress) |
+| Documentation | https://orbital-protocol-mu.vercel.app/docs (protocol guide) · [MATH](MATH.md) · [PAPER_IMPLEMENTATION](PAPER_IMPLEMENTATION.md) · [TESTS](TESTS.md) |
+| Networks | Unichain Sepolia (1301, featured), Ethereum Sepolia (11155111), Arbitrum Sepolia (421614), Arc Testnet (5042002): one pool each, listed on the app's Pools page |
 | Hook | [`0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888`](https://unichain-sepolia.blockscout.com/address/0x10f107C223E83C0c3D43f3afe0eD75e0a06B2888), source-verified |
 | Live swap | [1,000 USDC → 999.4334 DAI](https://unichain-sepolia.blockscout.com/tx/0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46) |
 | Demo video | **TODO (you)**: paste the URL after recording ([script](DEMO_SCRIPT.md)) |
@@ -19,7 +20,7 @@ Copy from here into the submission form. Fields marked **TODO (you)** need your 
 
 ## Description
 
-Stablecoins share a peg, but pair-based AMMs split their liquidity. Four coins need six pools, and depth on USDC/USDT does nothing for DAI/FRAX. Orbital puts all four coins in one reserve book, based on Paradigm's Orbital geometry. LPs choose how tightly to concentrate around the peg by picking a range (a "tick" on a four-dimensional sphere). The six canonical Uniswap v4 pools are only entry points to that book.
+Stablecoins share a peg, but pair-based AMMs split their liquidity. n coins need n(n − 1)/2 pools: six for four coins, twenty-eight for eight. Depth on one pair does nothing for the others. Orbital puts every coin in one reserve book, based on Paradigm's n-dimensional Orbital geometry. LPs choose how tightly to concentrate around the peg by picking a range (a "tick" on an n-dimensional sphere). The pair pools are only entry points to that book. The deployed instance is the n = 4 case: USDC, USDT, DAI and FRAX across six Uniswap v4 pools on Unichain Sepolia.
 
 The hook implements the whole path on real v4 infrastructure:
 
@@ -35,7 +36,7 @@ The hook implements the whole path on real v4 infrastructure:
   - An independent Decimal Python reference matches the Solidity crossing fixture to 18 decimals.
   - The app's quote reproduces the live testnet swap exactly: `999433404420670936920` DAI wei.
 - **The app is tested against real contracts.** `make app-e2e` deploys the demo to a local anvil node and drives it with the app's own transaction builders: swap output equals the quote, a slippage revert is decoded, and liquidity amounts equal the on-chain previews.
-- **Test totals:** 67 Solidity tests (PoolManager integration, deployment scripts, gas budgets, 2 invariant campaigns), 31 Python, 12 simulator, 50 app unit/render tests and 4 E2E tests. CI runs all of them.
+- **Test totals:** 65 Solidity tests (PoolManager integration, deployment scripts, gas budgets, 2 invariant campaigns), 31 Python, 12 simulator, 59 app unit/render tests and 4 E2E tests. CI runs all of them.
 - **Static analysis:** Slither was run and every finding triaged ([report](results/static-analysis.md)). There is no High or Medium true positive; one Low, fail-closed issue is documented along with its fix.
 - **The demo is honest about limits.** It includes a depeg stress model. When one coin floods the book, the narrow ranges trap near $0.90 and $0.80 and stop absorbing it, while the wide range keeps trading. The run stops with an explicit reason when every range would trap.
 
@@ -47,7 +48,7 @@ make check     # Foundry, Python reference, simulator, app tests, typecheck, bui
 make app-e2e   # needs anvil + jq: deploy locally, then drive with the app's builders
 ```
 
-To check the live deployment read-only: `cd app && ORBITAL_LIVE_RPC=https://sepolia.unichain.org npx vitest run src/chain/live.testnet.test.ts`.
+To check all four live deployments read-only: `cd app && ORBITAL_LIVE=1 npx vitest run src/chain/live.testnet.test.ts`.
 
 ## Limits (stated, not hidden)
 
@@ -56,7 +57,7 @@ To check the live deployment read-only: `cd app && ORBITAL_LIVE_RPC=https://sepo
 - The demo router is v4-core's `PoolSwapTest`; there is no production router or position manager. Only injected browser wallets are supported.
 - No fee governance or pause authority. Fees go to ranges that were interior when the swap started.
 
-The full list is in [REMAINING_WORK.md](REMAINING_WORK.md#c-known-limits-deliberately-not-addressed) and the [specification](SPECIFICATION.md#failure-policy-and-unresolved-obligations).
+The full list is in [REMAINING_WORK.md](REMAINING_WORK.md#c-known-limits-deliberately-not-addressed) and the [implementation ledger](PAPER_IMPLEMENTATION.md#open-obligations).
 
 ## Attribution
 

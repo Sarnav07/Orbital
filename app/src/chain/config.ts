@@ -1,6 +1,8 @@
-import { unichainSepolia } from "viem/chains";
+import { DEFAULT_NETWORK } from "./networks";
 
 export * from "./deployment";
+export * from "./networks";
 
-export const CHAIN = unichainSepolia;
-export const RPC_URL: string = import.meta.env?.VITE_UNICHAIN_RPC_URL ?? "https://sepolia.unichain.org";
+/** The featured deployment (Unichain Sepolia); per-network values live in ./networks. */
+export const CHAIN = DEFAULT_NETWORK.chain;
+export const RPC_URL: string = DEFAULT_NETWORK.rpcUrl;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEPLOYMENT } from "./config";
 import { DEPLOY_BLOCK } from "./config";
-import { LOG_WINDOW, readAccount, readBook, readRecentSwaps, readSwapsBetween, type ReadClient } from "./reads";
+import { LOG_WINDOW, readAccount, readBook, readRecentSwaps, readSwapsBetween, readVolume24h, type ReadClient } from "./reads";
 
 const RADIUS = 10_000_000n * 10n ** 18n;
 const ticks = [1001n, 1004n, 1050n].map((permille, index) => ({ radius: RADIUS, k: RADIUS * permille / 1000n, isInterior: index !== 0 }));
@@ -87,15 +87,36 @@ describe("chain reads", () => {
     expect(windows[0]).toEqual([100n, 100n + LOG_WINDOW - 1n]);
   });
 
-  it("scans from genesis for deployments other than the recorded Sepolia one", async () => {
+  it("scans from genesis for deployments without a recorded deploy block", async () => {
     const windows: [bigint, bigint][] = [];
     const client = {
       ...fakeClient(),
       getBlockNumber: async () => 500n,
       getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => { windows.push([fromBlock, toBlock]); return []; },
     } as unknown as ReadClient;
-    const recent = await readRecentSwaps(client, { ...DEPLOYMENT, chainId: 31337 });
+    const recent = await readRecentSwaps(client, { ...DEPLOYMENT, chainId: 31337, deployBlock: undefined as unknown as number });
     expect(windows).toEqual([[0n, 500n]]);
     expect(recent.scannedFrom).toBe(0n);
+  });
+
+  it("sums swap inputs from roughly the last 24 hours at $1 per coin, in 18 decimals", async () => {
+    // 2-second blocks: 24h is 43,200 blocks. Head is 100,000 blocks after deployment.
+    const head = DEPLOY_BLOCK + 100_000n;
+    const usdt = DEPLOYMENT.currencies[DEPLOYMENT.symbols.indexOf("USDT")];
+    const frax = DEPLOYMENT.currencies[DEPLOYMENT.symbols.indexOf("FRAX")];
+    const swaps = [
+      { block: head - 50_000n, input: usdt, amountIn: 9_000_000n }, // older than 24h: ignored
+      { block: head - 40_000n, input: usdt, amountIn: 2_000_000n }, // 2 USDT (6 dp)
+      { block: head - 10n, input: frax, amountIn: 3n * 10n ** 18n }, // 3 FRAX (18 dp)
+    ];
+    const client = {
+      getBlockNumber: async () => head,
+      getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({ number: blockNumber, timestamp: blockNumber * 2n }),
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => swaps
+        .filter((swap) => swap.block >= fromBlock && swap.block <= toBlock)
+        .map((swap) => ({ args: { input: swap.input, output: frax, amountIn: swap.amountIn, amountOut: 1n, fee: 0n, crossings: 0n }, transactionHash: "0xabc", blockNumber: swap.block })),
+    } as unknown as ReadClient;
+    const volume = await readVolume24h(client, DEPLOYMENT);
+    expect(volume).toBe(5n * 10n ** 18n);
   });
 });

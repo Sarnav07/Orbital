@@ -8,13 +8,16 @@ import {
   effectiveRate,
   formatWad,
   interiorBitmap,
+  marginalView,
   maxQuotableInput,
   parseWad,
   previewSwap,
   projectReserveImbalance,
   sampleCurve,
   swapFee,
+  tickDisplay,
 } from "./simulator";
+import { tickGeometry } from "../../packages/simulator/src/quote.js";
 
 const EQUAL = parseWad("15000000");
 
@@ -60,9 +63,13 @@ describe("Orbital stateful sandbox", () => {
     const curve = sampleCurve(sandbox, 0, 1);
 
     expect(curve.length).toBeGreaterThan(1);
-    expect(curve[0].amountOut).toBeGreaterThan(0n);
-    expect(curve[0].inputReserve).toBeGreaterThan(sandbox.reserves[0]);
-    expect(curve[0].outputReserve).toBeLessThan(sandbox.reserves[1]);
+    const after = curve.filter((point) => point.inputReserve > sandbox.reserves[0]);
+    const behind = curve.filter((point) => point.inputReserve < sandbox.reserves[0]);
+    expect(after.length).toBeGreaterThan(0);
+    expect(behind.length).toBeGreaterThan(0);
+    expect(after[0].outputReserve).toBeLessThan(sandbox.reserves[1]);
+    expect(behind[0].outputReserve).toBeGreaterThan(sandbox.reserves[1]);
+    for (let index = 1; index < curve.length; index += 1) expect(curve[index].inputReserve > curve[index - 1].inputReserve).toBe(true);
     expect(typeof curve[0].interiorBitmap).toBe("bigint");
     expect(sandbox.reserves.map(String)).toEqual(before);
   });
@@ -120,5 +127,31 @@ describe("Orbital stateful sandbox", () => {
     expect(singleDepegTrapPrice(1.004)).toBeCloseTo(0.803, 3);
     expect(singleDepegTrapPrice(1.05)).toBeCloseTo(0.362, 3);
     expect(singleDepegTrapPrice(1.2)).toBeNull();
+  });
+
+  it("describes each demo range by the depeg it tolerates and its capital efficiency", () => {
+    const ticks = createSandboxState().ticks;
+    const shown = ticks.map(tickDisplay);
+    expect(shown.map((tick) => tick.depeg)).toEqual([expect.closeTo(0.1, 2), expect.closeTo(0.197, 2), expect.closeTo(0.638, 2)]);
+    for (const [index, tick] of ticks.entries()) {
+      const q = Number(tick.radius / 2n);
+      const expected = q / (q - Number(tickGeometry(tick.radius, tick.k).minimumReserve));
+      expect(shown[index].capEff).toBeCloseTo(expected, 5);
+      expect(shown[index].capEff).toBeGreaterThan(1);
+    }
+    expect(shown[0].capEff).toBeGreaterThan(shown[1].capEff);
+    expect(shown[1].capEff).toBeGreaterThan(shown[2].capEff);
+    expect(shown[1].kOverR).toBeCloseTo(1.004, 6);
+  });
+
+  it("reads marginal prices and the worst pairwise depeg from the reserve state", () => {
+    const sandbox = createSandboxState();
+    const peg = marginalView(sandbox);
+    for (const price of peg.prices) expect(price).toBeCloseTo(1, 4);
+    expect(peg.depeg).toBeLessThan(1e-4);
+    const moved = marginalView(commitPreview(previewSwap(sandbox, 0, 2, parseWad("800000"))));
+    expect(moved.prices[0]).toBeLessThan(1);
+    expect(moved.prices[2]).toBeGreaterThan(1);
+    expect(moved.depeg).toBeGreaterThan(0.001);
   });
 });

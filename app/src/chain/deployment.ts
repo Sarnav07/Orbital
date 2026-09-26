@@ -13,17 +13,21 @@ export type Deployment = {
   currencies: Address[];
   symbols: string[];
   decimals: number[];
+  /** First block of the deployment broadcast; logs before it cannot involve this hook. */
+  deployBlock: number;
+  /** A recorded swap through the live pool, when one was made at deploy time. */
+  liveSwapTx?: Hash;
 };
 
 /** Recorded Unichain Sepolia deployment (contracts/deployments/unichain-sepolia.json). */
 export const DEPLOYMENT = deployment as Deployment;
 export const EXPLORER = "https://unichain-sepolia.blockscout.com";
-/** First block of the deployment broadcast; logs before it cannot involve this hook. */
-export const DEPLOY_BLOCK = 63_408_440n;
+/** First block of the Unichain deployment broadcast. */
+export const DEPLOY_BLOCK = BigInt(DEPLOYMENT.deployBlock);
 export const LIVE_SWAP_TX: Hash = "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46";
 
 /** Earliest block worth scanning for this deployment's events. */
-export const deployBlockOf = (deployment: Deployment) => deployment.chainId === DEPLOYMENT.chainId ? DEPLOY_BLOCK : 0n;
+export const deployBlockOf = (deployment: Deployment) => BigInt(deployment.deployBlock ?? 0);
 
 export const explorerAddress = (address: string) => `${EXPLORER}/address/${address}`;
 export const explorerTx = (hash: string) => `${EXPLORER}/tx/${hash}`;

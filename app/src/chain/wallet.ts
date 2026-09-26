@@ -1,5 +1,5 @@
 import { toHex } from "viem";
-import { CHAIN, EXPLORER, RPC_URL } from "./config";
+import { DEFAULT_NETWORK, type Network } from "./networks";
 
 export type Eip1193Provider = {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
@@ -40,9 +40,9 @@ export function watchWallets(onChange: (wallets: DiscoveredWallet[]) => void, ho
 const errorCode = (error: unknown) => (error as { code?: number; data?: { originalError?: { code?: number } } })?.code
   ?? (error as { data?: { originalError?: { code?: number } } })?.data?.originalError?.code;
 
-/** Switches the wallet to Unichain Sepolia, adding the network first if the wallet does not know it. */
-export async function ensureChain(provider: Eip1193Provider) {
-  const chainId = toHex(CHAIN.id);
+/** Switches the wallet to `network` (Unichain Sepolia by default), adding the network first if the wallet does not know it. */
+export async function ensureChain(provider: Eip1193Provider, network: Pick<Network, "chain" | "rpcUrl" | "explorer"> = DEFAULT_NETWORK) {
+  const chainId = toHex(network.chain.id);
   try {
     await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId }] });
   } catch (error) {
@@ -51,10 +51,10 @@ export async function ensureChain(provider: Eip1193Provider) {
       method: "wallet_addEthereumChain",
       params: [{
         chainId,
-        chainName: CHAIN.name,
-        nativeCurrency: CHAIN.nativeCurrency,
-        rpcUrls: [RPC_URL],
-        blockExplorerUrls: [EXPLORER],
+        chainName: network.chain.name,
+        nativeCurrency: network.chain.nativeCurrency,
+        rpcUrls: [network.rpcUrl],
+        blockExplorerUrls: [network.explorer],
       }],
     });
     await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId }] });

@@ -3,6 +3,7 @@ import {
   aggregateTicks,
   attributeRanges,
   quoteExactIn,
+  tickGeometry,
 } from "../../packages/simulator/src/quote.js";
 
 export const simulatorAssets = ["USDC", "USDT", "DAI", "FRAX"] as const;
@@ -141,6 +142,11 @@ export function projectReserveImbalance(reserves: bigint[]): PlanePoint {
   };
 }
 
+/**
+ * Samples the two-asset cross-section on both sides of the committed state:
+ * selling `input` moves right along the curve, selling `output` moves left.
+ * Points are ordered by input reserve; unquotable points are dropped.
+ */
 export function sampleCurve(
   sandbox: SandboxState,
   input: number,
@@ -148,23 +154,27 @@ export function sampleCurve(
   count = 24,
 ): CurvePoint[] {
   const points: CurvePoint[] = [];
-  const maxAmount = 2_000_000n * WAD;
-  for (let index = 1; index <= count; index += 1) {
-    const amountIn = maxAmount * BigInt(index) / BigInt(count);
-    try {
-      const quote = previewSwap(sandbox, input, output, amountIn);
-      points.push({
-        amountIn,
-        amountOut: quote.amountOut,
-        inputReserve: quote.reserves[input],
-        outputReserve: quote.reserves[output],
-        interiorBitmap: quote.interiorBitmap,
-      });
-    } catch {
-      // A missing root is outside the rendered operating range, not a fabricated point.
+  const side = (sell: number, buy: number) => {
+    const maxAmount = sandbox.reserves[sell] * 2n / 5n;
+    for (let index = 1; index <= count; index += 1) {
+      const amountIn = maxAmount * BigInt(index) / BigInt(count);
+      try {
+        const quote = previewSwap(sandbox, sell, buy, amountIn);
+        points.push({
+          amountIn,
+          amountOut: quote.amountOut,
+          inputReserve: quote.reserves[input],
+          outputReserve: quote.reserves[output],
+          interiorBitmap: quote.interiorBitmap,
+        });
+      } catch {
+        // A missing root is outside the rendered operating range, not a fabricated point.
+      }
     }
-  }
-  return points;
+  };
+  side(input, output);
+  side(output, input);
+  return points.sort((left, right) => (left.inputReserve < right.inputReserve ? -1 : left.inputReserve > right.inputReserve ? 1 : 0));
 }
 
 /**
@@ -275,4 +285,70 @@ export function singleDepegTrapPrice(kOverR: number): number | null {
 
 export function quoteMessage(error: unknown): string {
   return error instanceof Error ? error.message : "The quote could not be computed for this state.";
+}
+
+export type TickDisplay = { kOverR: number; depeg: number | null; capEff: number };
+
+/**
+ * Display terms for a range: the single-coin depeg it tolerates before trapping
+ * and its capital efficiency at the peg, q / (q − x_min), as in Sphere4.tick.
+ */
+export function tickDisplay(tick: Tick): TickDisplay {
+  const kOverR = Number(tick.k * 1_000_000n / tick.radius) / 1_000_000;
+  const trap = singleDepegTrapPrice(kOverR);
+  const q = tick.radius / 2n;
+  const { minimumReserve } = tickGeometry(tick.radius, tick.k);
+  const capEff = Number(q * 1_000_000n / (q - minimumReserve)) / 1_000_000;
+  return { kOverR, depeg: trap === null ? null : 1 - trap, capEff };
+}
+
+/**
+ * Marginal view of the book, fee excluded: each coin's price is the geometric
+ * mean of its one-token rates into the other three, and `depeg` is the worst
+ * pairwise discount, the same measure a range's trap depeg is stated in.
+ */
+export function marginalView(sandbox: SandboxState): { prices: number[]; depeg: number } {
+  const state = aggregateTicks(sandbox.ticks);
+  const count = sandbox.reserves.length;
+  const rate = (input: number, output: number) => {
+    try {
+      const result = quoteExactIn({ state, ticks: sandbox.ticks, reserves: sandbox.reserves, input, output, amountIn: WAD });
+      return Number(result.amountOut * 1_000_000_000n / WAD) / 1_000_000_000;
+    } catch {
+      return null;
+    }
+  };
+  let depeg = 0;
+  const prices = Array.from({ length: count }, (_, asset) => {
+    let logSum = 0;
+    let quoted = 0;
+    for (let other = 0; other < count; other += 1) {
+      if (other === asset) continue;
+      const value = rate(asset, other);
+      if (value === null || value <= 0) continue;
+      logSum += Math.log(value);
+      quoted += 1;
+      depeg = Math.max(depeg, 1 - value);
+    }
+    return quoted ? Math.exp(logSum / quoted) : 1;
+  });
+  return { prices, depeg };
+}
+
+/** Human display for WAD amounts: grouped digits, fewer decimals as values grow. */
+export const displayWad = (value: bigint) => {
+  const units = Number(value / (10n ** 12n)) / 1_000_000;
+  return units.toLocaleString("en-US", { maximumFractionDigits: units >= 1_000 ? 2 : 4 });
+};
+
+/** Millions with one decimal for 1M+ amounts, grouped digits below. */
+export const compactWad = (value: bigint) => {
+  const units = Number(value / (10n ** 12n)) / 1_000_000;
+  return units >= 1_000_000 ? `${(units / 1_000_000).toFixed(1)}M` : units.toLocaleString("en-US", { maximumFractionDigits: 2 });
+};
+
+/** Two-decimal WAD display used by the replay fixture, without floating point. */
+export function toAmount(raw: unknown) {
+  const value = BigInt(raw as string); const base = 10n ** 18n;
+  return `${value / base}.${((value % base) / (10n ** 16n)).toString().padStart(2, "0")}`;
 }

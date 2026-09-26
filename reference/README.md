@@ -27,4 +27,4 @@ Tests include hand-derived Pythagorean states, endpoint checks, radius scaling, 
 
 `SegmentedPool` takes `(radius, k/r)` ranges and starts at the equal-price state. It solves a fixed tick partition, detects the first crossed normalized boundary, solves the crossover using the fixed total-sum constraint, toggles every tied range, and continues. Versioned scenarios live in `reference/fixtures/`. The solver brackets roots with a bounded `1e-36` relative residual target. That is deliberately distinct from Decimal's 80-digit context and is not a Solidity tolerance.
 
-See [the mathematical specification](../docs/SPECIFICATION.md) for equations, derivation and unresolved protocol obligations.
+See [the mathematical contract](../docs/MATH.md) for equations and derivations, and [the implementation ledger](../docs/PAPER_IMPLEMENTATION.md) for unresolved protocol obligations.

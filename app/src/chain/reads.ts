@@ -3,7 +3,7 @@ import { hookAbi, tokenAbi } from "./abi";
 import { deployBlockOf, type Deployment } from "./config";
 import type { QuoteBook } from "./quote";
 
-export type ReadClient = Pick<PublicClient, "readContract" | "simulateContract" | "getLogs" | "getBlockNumber">;
+export type ReadClient = Pick<PublicClient, "readContract" | "simulateContract" | "getLogs" | "getBlockNumber" | "getBlock">;
 export type LiveBook = QuoteBook & {
   custody: bigint[];
   required: bigint[];
@@ -141,4 +141,30 @@ export async function readRecentSwaps(
   } catch {
     return { ok: false, swaps: [] as RecentSwap[], latest: 0n, scannedFrom: 0n };
   }
+}
+
+const DAY_SECONDS = 86_400n;
+
+/** First block at or after `timestamp` within [low, high], by binary search on block timestamps. */
+async function firstBlockAfter(client: ReadClient, timestamp: bigint, low: bigint, high: bigint) {
+  while (low < high) {
+    const middle = (low + high) / 2n;
+    const block = await client.getBlock({ blockNumber: middle });
+    if (block.timestamp < timestamp) low = middle + 1n;
+    else high = middle;
+  }
+  return low;
+}
+
+/**
+ * Swap volume of the last 24 hours in 18-decimal dollars ($1 per coin), summing
+ * each swap's exact input. The window never starts before the deployment block.
+ */
+export async function readVolume24h(client: ReadClient, deployment: Deployment): Promise<bigint> {
+  const latest = await client.getBlockNumber();
+  const head = await client.getBlock({ blockNumber: latest });
+  const deployBlock = deployBlockOf(deployment);
+  const fromBlock = await firstBlockAfter(client, head.timestamp - DAY_SECONDS, deployBlock, latest);
+  const swaps = await readSwapsBetween(client, deployment, fromBlock, latest);
+  return swaps.reduce((sum, swap) => swap.input < 0 ? sum : sum + swap.amountIn * 10n ** BigInt(18 - deployment.decimals[swap.input]), 0n);
 }

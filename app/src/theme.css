@@ -1,0 +1,110 @@
+/* Site-wide Uniswap theme tokens (Uniswap packages/ui palette). Dark is the base; light applies
+   when chosen explicitly (data-theme="light") or when Auto follows a light system setting. */
+:root {
+  --uni-surface1: #131313;
+  --uni-surface1-hover: #1a1a1a;
+  --uni-surface2: #1f1f1f;
+  --uni-surface2-hover: #242424;
+  --uni-surface3: rgba(255, 255, 255, .12);
+  --uni-surface3-hover: rgba(255, 255, 255, .16);
+  --uni-surface3-solid: #393939;
+  --uni-neutral1: #ffffff;
+  --uni-neutral2: rgba(255, 255, 255, .65);
+  --uni-neutral3: rgba(255, 255, 255, .38);
+  --uni-accent1: #ff37c7;
+  --uni-accent1-hover: #e500a5;
+  --uni-accent2: rgba(255, 55, 199, .08);
+  --uni-accent2-hover: rgba(255, 55, 199, .12);
+  --uni-accent2-solid: #261621;
+  --uni-critical: #ff593c;
+  --uni-success: #21c95e;
+  --uni-warning: #ffbf17;
+  --uni-scrim: rgba(0, 0, 0, .6);
+  --uni-shadow: rgba(0, 0, 0, .45);
+  --uni-glow-1: #8f7a3a;
+  --uni-glow-2: #1e6b54;
+  --uni-glow-3: #6b2a1c;
+  --uni-font: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  --sans: var(--uni-font);
+  --mono: var(--uni-font);
+  --serif: var(--uni-font);
+  color-scheme: dark;
+
+  /* Legacy landing/docs tokens now follow the theme. */
+  --base: var(--uni-surface1);
+  --surface: var(--uni-surface1);
+  --raised: var(--uni-surface2);
+  --text: var(--uni-neutral1);
+  --soft: var(--uni-neutral1);
+  --muted: var(--uni-neutral2);
+  --subtle: var(--uni-neutral3);
+  --line: var(--uni-surface3);
+  --faint: color-mix(in srgb, var(--uni-neutral1) 6.5%, transparent);
+  --sim-accent: var(--uni-accent1);
+  --dg-accent: var(--uni-accent1);
+}
+
+:root[data-theme="light"] {
+  --uni-surface1: #ffffff;
+  --uni-surface1-hover: #fcfcfc;
+  --uni-surface2: #f9f9f9;
+  --uni-surface2-hover: #f2f2f2;
+  --uni-surface3: rgba(19, 19, 19, .08);
+  --uni-surface3-hover: rgba(19, 19, 19, .1);
+  --uni-surface3-solid: #f2f2f2;
+  --uni-neutral1: #131313;
+  --uni-neutral2: rgba(19, 19, 19, .63);
+  --uni-neutral3: rgba(19, 19, 19, .35);
+  --uni-accent2-solid: #fff3fc;
+  --uni-critical: #e10f0f;
+  --uni-success: #0c8911;
+  --uni-warning: #996f01;
+  --uni-shadow: rgba(19, 19, 19, .1);
+  --uni-glow-1: #f5d98a;
+  --uni-glow-2: #9fe3c9;
+  --uni-glow-3: #f7b4a4;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --uni-surface1: #ffffff;
+    --uni-surface1-hover: #fcfcfc;
+    --uni-surface2: #f9f9f9;
+    --uni-surface2-hover: #f2f2f2;
+    --uni-surface3: rgba(19, 19, 19, .08);
+    --uni-surface3-hover: rgba(19, 19, 19, .1);
+    --uni-surface3-solid: #f2f2f2;
+    --uni-neutral1: #131313;
+    --uni-neutral2: rgba(19, 19, 19, .63);
+    --uni-neutral3: rgba(19, 19, 19, .35);
+    --uni-accent2-solid: #fff3fc;
+    --uni-critical: #e10f0f;
+    --uni-success: #0c8911;
+    --uni-warning: #996f01;
+    --uni-shadow: rgba(19, 19, 19, .1);
+    --uni-glow-1: #f5d98a;
+    --uni-glow-2: #9fe3c9;
+    --uni-glow-3: #f7b4a4;
+    color-scheme: light;
+  }
+}
+
+/* Blurred floating token orbs (landing hero, docs intro, and fixed behind /app). */
+.uni-orbs { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.uni-orbs.fixed { position: fixed; }
+.uni-orb { position: absolute; border-radius: 50%; filter: blur(14px); opacity: .5; }
+img.uni-orb { width: 96px; height: 96px; }
+.uni-orb-1 { top: 27%; left: 7%; }
+.uni-orb-2 { top: 9%; right: 27%; width: 110px !important; height: 110px !important; }
+.uni-orb-3 { top: 74%; right: 30%; width: 90px !important; height: 90px !important; }
+.uni-orb-glow-1 { top: 2%; left: 43%; width: 150px; height: 150px; background: var(--uni-glow-1); filter: blur(48px); opacity: .45; }
+.uni-orb-glow-2 { top: 38%; left: 24%; width: 140px; height: 140px; background: var(--uni-glow-2); filter: blur(52px); opacity: .45; }
+.uni-orb-glow-3 { top: 75%; left: 42%; width: 170px; height: 170px; background: var(--uni-glow-3); filter: blur(60px); opacity: .35; }
+@media (max-width: 760px) { .uni-orbs { display: none; } }
+
+/* Theme control (lives in the ⋯ menus). */
+.theme-menu { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; color: var(--uni-neutral1); font: 16px var(--uni-font); }
+.theme-segment { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--uni-surface3); border-radius: 12px; }
+.theme-segment button { height: 28px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--uni-neutral2); font: 535 13px var(--uni-font); cursor: pointer; }
+.theme-segment button.active { background: var(--uni-surface2); color: var(--uni-neutral1); }

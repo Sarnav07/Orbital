@@ -2,7 +2,7 @@
 
 ## What this prototype demonstrates
 
-**One reserve book for four stablecoins.** Orbital exposes USDC, USDT, DAI and FRAX through six canonical pair routes while the hook advances one shared four-asset reserve state. The pricing prototype uses bounded Orbital sphere/torus geometry rather than an independent constant-product reserve for every pair.
+**One reserve book for n stablecoins.** Orbital's design puts any number of stablecoins behind one shared reserve book: n coins, n(n − 1)/2 pair pools, one state. The pricing uses Orbital's n-dimensional sphere/torus geometry rather than an independent constant-product reserve for every pair. This revision deploys the n = 4 case: USDC, USDT, DAI and FRAX exposed through six canonical v4 pools, with the hook advancing one shared four-asset reserve state.
 
 The repository demonstrates the mechanics, not a production-ready stablecoin exchange. It is experimental, unaudited, and for mock/test environments only.
 
@@ -27,14 +27,14 @@ Required local tooling is Foundry `v1.7.1`, Python `3.14.6`, Node.js, Git, and M
 | Solvency | A fuzzed invariant over random swaps, deposits, withdrawals and fee collection keeps claims custody ≥ required inventory and the book on the aggregate torus. |
 | Geometry and crossings | Solidity and independent Python tests cover fixed-partition quotes, tick crossing, recovery, invalid states, and precision bounds. |
 | LP accounting | Range-share and fee-book tests cover proportional claims, independent range inventory, dust, and unauthorized-withdrawal boundaries. |
-| Live app | The `/app` Testnet tab quotes with an exact mirror of `beforeSwap`, which reproduces the recorded testnet swap to the wei. `make app-e2e` proves its transaction builders against real contracts. |
+| Live app | The `/app` Swap page (Uniswap-style interface) quotes with an exact mirror of `beforeSwap`, which reproduces the recorded testnet swap to the wei. `make app-e2e` proves its transaction builders against real contracts. |
 | BigInt replay | The simulator recomputes every recorded transition and rejects any amount or bitmap it cannot reproduce. Solidity and JavaScript assert the same vector file exactly. |
 
 The regression command currently runs:
-- 67 Solidity tests, including 2 invariant campaigns and a differential check against v4 `FullMath`
+- 65 Solidity tests, including 2 invariant campaigns and a differential check against v4 `FullMath`
 - 31 independent Python-reference tests
 - 12 simulator tests
-- 50 app unit/render tests
+- 59 app unit/render tests
 - the app typecheck and production build
 
 `make app-e2e` adds 4 real-contract tests against a local anvil deployment, driven by the app's transaction builders. Static-analysis triage is in [results/static-analysis.md](results/static-analysis.md). [Gas measurements](results/gas-baseline.md) are full swaps through a real PoolManager and router.
@@ -50,7 +50,18 @@ The end-to-end recipe is [`DeployOrbitalDemo.s.sol`](../contracts/script/DeployO
 - Hook deployment tx `0xee3e34e9d7e3934b1536a2067b9b0a8d3bcf52ee214be9f8322dda226bbeabe0`; seeding tx `0x07fd74b7193d74422cab2beaa5bcd42afdd7b0a344af56015deb33656b2e7220`.
 - Live swap tx `0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46`: 1,000 USDC in, 999.4334 DAI out. The hook state was read back afterwards (`seeded`, `reserves`, `solvency`, `feeLiability`).
 
-Addresses, symbols and decimals are in [`contracts/deployments/unichain-sepolia.json`](../contracts/deployments/unichain-sepolia.json); the full transaction table is in the [README](../README.md#deployment-unichain-sepolia-chain-1301).
+**Ethereum Sepolia (11155111), Arbitrum Sepolia (421614) and Arc Testnet (5042002), 2026-09-26:**
+
+- Same script and parameters as Unichain (`DeployOrbitalDemo.s.sol`), each against that chain's existing v4 PoolManager (`POOL_MANAGER` set). 25 transactions per chain, all successful.
+- Deploy blocks: Sepolia 11,785,840; Arbitrum Sepolia 312,903,592; Arc 64,090,965.
+- Each chain's live swap is 1,000 USDC in, 999.4334 DAI out, 0.5 USDC fee (about 1.23M gas). Afterwards `seeded()` is true and `solvency()` holds.
+- Arc's PoolManager `0x8366a39cc670b4001a1121b8f6a443a643e40951` has runtime bytecode identical to Uniswap's v4 PoolManager on the other three chains, compared with each contract's own address masked. Its owner (`0x9701…3A52`) differs from Uniswap's testnet owner (`0x5b73…0519`), so it cannot be proven to be Uniswap's own deployment.
+- Arbitrum Sepolia gas was bridged from Ethereum Sepolia through the Arbitrum Inbox (`depositEth`, 0.05 ETH, tx `0x604908168e3de884f3e623d09d671e5187eeb782a453da9d445210a8295650e2`).
+- Not yet source-verified on Etherscan, Arbiscan or ArcScan.
+
+Addresses, symbols, decimals, deploy blocks and live swaps are in [`contracts/deployments/`](../contracts/deployments).
+
+Addresses, symbols and decimals are in [`contracts/deployments/unichain-sepolia.json`](../contracts/deployments/unichain-sepolia.json); the full transaction table is in the [README](../README.md#deployed-contracts).
 
 ## Current limits
 

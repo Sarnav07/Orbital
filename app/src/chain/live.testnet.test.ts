@@ -1,28 +1,29 @@
 import { createPublicClient, http } from "viem";
 import { describe, expect, it } from "vitest";
-import { CHAIN, DEPLOYMENT } from "./config";
+import { NETWORKS } from "./networks";
 import { quoteHookSwap } from "./quote";
 import { readBook, readRecentSwaps } from "./reads";
 
-// Read-only smoke test against the recorded Unichain Sepolia deployment.
-// Opt in with ORBITAL_LIVE_RPC=https://sepolia.unichain.org npx vitest run src/chain/live.testnet.test.ts
-const rpc = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.ORBITAL_LIVE_RPC;
+// Read-only smoke test against every recorded Orbital deployment, over each network's public RPC.
+// Opt in with ORBITAL_LIVE=1 npx vitest run src/chain/live.testnet.test.ts
+const live = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.ORBITAL_LIVE;
 
-describe.skipIf(!rpc)("live Unichain Sepolia deployment", () => {
-  const client = createPublicClient({ chain: CHAIN, transport: http(rpc) });
+describe.skipIf(!live).each(NETWORKS)("live $name deployment", (network) => {
+  const client = createPublicClient({ chain: network.chain, transport: http(network.rpcUrl) });
+  const deployment = network.deployment;
 
   it("reads a seeded, solvent three-range book that the app can quote", async () => {
-    const book = await readBook(client, DEPLOYMENT);
+    const book = await readBook(client, deployment);
     expect(book.ticks).toHaveLength(3);
     expect(book.solvent).toBe(true);
     expect(book.totalShares.every((shares) => shares > 0n)).toBe(true);
-    const quote = quoteHookSwap(book, 0, 1, 10n ** BigInt(DEPLOYMENT.decimals[0]));
+    const quote = quoteHookSwap(book, 0, 1, 10n ** BigInt(deployment.decimals[0]));
     expect(quote.amountOut).toBeGreaterThan(0n);
   }, 30_000);
 
   it("finds the recorded live swap in the hook's event history", async () => {
-    const recent = await readRecentSwaps(client, DEPLOYMENT, { limit: 100, maxWindows: 200 });
+    const recent = await readRecentSwaps(client, deployment, { limit: 100, maxWindows: 200 });
     expect(recent.ok).toBe(true);
-    expect(recent.swaps.some((swap) => swap.hash === "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46")).toBe(true);
-  }, 30_000);
+    expect(recent.swaps.some((swap) => swap.hash === deployment.liveSwapTx)).toBe(true);
+  }, 60_000);
 });

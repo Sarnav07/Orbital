@@ -23,5 +23,7 @@
     "DAI",
     "USDC"
   ],
-  "tickSpacing": 60
+  "tickSpacing": 60,
+  "deployBlock": 63408440,
+  "liveSwapTx": "0x23e33f62af47efb078152ae5d8ef18b144f65771b6bc2cf87c7414c353e19e46"
 }

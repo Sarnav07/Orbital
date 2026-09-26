@@ -2,7 +2,6 @@
 pragma solidity 0.8.30;
 
 import {SegmentedTorus4} from "../src/math/SegmentedTorus4.sol";
-import {Sphere4} from "../src/math/Sphere4.sol";
 import {Torus4} from "../src/math/Torus4.sol";
 
 contract SegmentedTorus4Harness {

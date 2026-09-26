@@ -41,4 +41,21 @@ describe("wallet discovery and network guard", () => {
     expect(addParams.chainId).toBe("0x515");
     expect(addParams.rpcUrls[0]).toMatch(/^https:/);
   });
+
+  it("switches to the requested network and adds it with that network's RPC and explorer", async () => {
+    const { networkByKey } = await import("./networks");
+    const arc = networkByKey("arc-testnet");
+    const calls: Array<{ method: string; params: Array<Record<string, any>> }> = []; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const wallet = provider((method, params) => {
+      calls.push({ method, params: params as Array<Record<string, unknown>> });
+      if (method === "wallet_switchEthereumChain" && !calls.some((call) => call.method === "wallet_addEthereumChain")) throw Object.assign(new Error("Unrecognized chain"), { code: 4902 });
+      return null;
+    });
+    await ensureChain(wallet, arc);
+    expect(calls[0].params[0].chainId).toBe("0x4cef52");
+    const added = calls.find((call) => call.method === "wallet_addEthereumChain")!.params[0];
+    expect(added.chainName).toBe("Arc Testnet");
+    expect(added.nativeCurrency.symbol).toBe("USDC");
+    expect(added.blockExplorerUrls[0]).toBe("https://testnet.arcscan.app");
+  });
 });

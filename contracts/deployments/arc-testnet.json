@@ -1,0 +1,29 @@
+{
+  "chainId": 5042002,
+  "currencies": [
+    "0x162cFcCaA70bCC228147ca0CB9361436cF861E24",
+    "0x479E644B05876C6AD98cE59C2Fc94FB6C0E6b231",
+    "0x7eef5a9C4289ECC5C53E2a35fac7D2Fb770048cd",
+    "0xE30bd1162A9BB02C32EC8a0731014d45e1C15B73"
+  ],
+  "decimals": [
+    6,
+    18,
+    6,
+    18
+  ],
+  "fee": 500,
+  "feeBook": "0x5cA75De533028E9393878d6dD0C596faD0A3D458",
+  "hook": "0x9cd75cfac54D6969a67009260A49d92c4f016888",
+  "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+  "router": "0xf23601BA0765CC7FEE6c775AaF3E6ccc691f779c",
+  "symbols": [
+    "USDC",
+    "FRAX",
+    "USDT",
+    "DAI"
+  ],
+  "tickSpacing": 60,
+  "deployBlock": 64090965,
+  "liveSwapTx": "0x1f1c293ff65ac40a0e3a4a12979e2acac6bcece8b19df4da26c77da588768cbd"
+}

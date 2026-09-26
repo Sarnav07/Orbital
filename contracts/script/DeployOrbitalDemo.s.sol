@@ -8,7 +8,6 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
 
-import {OrbitalV4Hook} from "../src/OrbitalV4Hook.sol";
 import {OrbitalDeployBase, OrbitalDeployment, OrbitalDemoConfig} from "./OrbitalDeployBase.sol";
 
 /// @notice End-to-end demo deployment: mock basket, hook, six pools, seeded ranges, router.

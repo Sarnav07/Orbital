@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { docsChapters } from "./DocsPage";
 import {
-  chapters,
+  architecture,
+  principles,
   geometryCards,
   homePrinciples,
   problemCards,
@@ -9,16 +11,11 @@ import {
 } from "./App";
 
 describe("Orbital documentation story", () => {
-  it("keeps the six repository-grounded chapters in order", () => {
-    expect(chapters).toHaveLength(6);
-    expect(chapters.map((chapter) => chapter[1])).toEqual([
-      "The split",
-      "One reserve book",
-      "A bounded surface",
-      "Ranges hold their own claims",
-      "Show the boundary",
-      "Settle at the hook",
-    ]);
+  it("organizes the docs guide into three chapter groups with unique section ids", () => {
+    expect(docsChapters.map((chapter) => chapter.label)).toEqual(["Understand the protocol", "Use Orbital", "Go deeper"]);
+    const ids = docsChapters.flatMap((chapter) => chapter.links.map(([id]) => id));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain("contracts");
   });
 
   it("formats WAD fixture values without floating point conversion", () => {
@@ -32,6 +29,7 @@ describe("Orbital documentation story", () => {
   });
 
   it("keeps the new homepage narrative grounded in the prototype", () => {
+    expect(problemCards[0][1]).toMatch(/N\(N ?− ?1\) ?\/ ?2/);
     expect(problemCards.map((card) => card[2])).toEqual([
       "Fragmented",
       "Flat",
@@ -42,6 +40,8 @@ describe("Orbital documentation story", () => {
       "02 / TICKS",
       "03 / TORUS",
     ]);
+    for (const card of problemCards) expect(card[4].split(/\s+/).length).toBeLessThanOrEqual(20);
+    for (const card of [...principles, ...architecture]) expect(card[2].split(/\s+/).length).toBeLessThanOrEqual(20);
     expect(homePrinciples.map((principle) => principle[1])).toEqual([
       "Shared route state",
       "Range-specific claims",
