@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["crates/orbital-cli","crates/orbital-math", "programs/cu-bench", "programs/orbital"]
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1

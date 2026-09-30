@@ -1,0 +1,38 @@
+[package]
+name = "orbital"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Orbital: one reserve book for four stablecoins, as a Solana program"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "orbital"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
+anchor-spl = "1.2.0"
+bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
+orbital-math = { path = "../../crates/orbital-math" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
+[dev-dependencies]
+litesvm = "0.16"
+litesvm-token = "0.16"
+solana-compute-budget-interface = "3.0"
+solana-keypair = "3.1"
+solana-signer = "3.0"
+solana-transaction = "4.1"
