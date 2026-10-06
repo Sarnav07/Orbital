@@ -74,6 +74,29 @@ contract DeployOrbitalDemoTest is Test {
         assertGt(output.balanceOf(trader), 99 * 10 ** output.decimals());
     }
 
+    /// On a mainnet the mock coins must not share a symbol with the real stablecoins.
+    function testDemoScriptPrefixesMockSymbolsAndStillSeeds() public {
+        OrbitalDeployment memory deployment = new DeployOrbitalDemo().deploy(DEPLOYER_KEY, address(0), "o");
+        OrbitalV4Hook hook = deployment.hook;
+
+        assertTrue(hook.seeded());
+        string[] memory symbols = new string[](4);
+        for (uint8 i; i < 4; ++i) {
+            MockERC20 token = MockERC20(Currency.unwrap(hook.currencyAt(i)));
+            symbols[i] = token.symbol();
+            assertEq(bytes(token.symbol())[0], bytes1("o"));
+            assertEq(token.name(), string.concat("Orbital Mock ", _withoutFirst(token.symbol())));
+        }
+        uint256 matched;
+        string[4] memory expected = ["oUSDC", "oUSDT", "oDAI", "oFRAX"];
+        for (uint256 i; i < 4; ++i) {
+            for (uint256 j; j < 4; ++j) {
+                if (keccak256(bytes(symbols[j])) == keccak256(bytes(expected[i]))) ++matched;
+            }
+        }
+        assertEq(matched, 4);
+    }
+
     function testHookScriptSortsExistingTokensAndDeploysAtMinedAddress() public {
         address deployer = vm.addr(DEPLOYER_KEY);
         IPoolManager manager = IPoolManager(deployCode("PoolManager.sol:PoolManager", abi.encode(deployer)));
@@ -149,6 +172,15 @@ contract DeployOrbitalDemoTest is Test {
             );
         vm.stopPrank();
         assertGt(output.balanceOf(trader), 999 * 10 ** output.decimals());
+    }
+
+    function _withoutFirst(string memory value) private pure returns (string memory) {
+        bytes memory source = bytes(value);
+        bytes memory result = new bytes(source.length - 1);
+        for (uint256 i = 1; i < source.length; ++i) {
+            result[i - 1] = source[i];
+        }
+        return string(result);
     }
 
     function _key(OrbitalV4Hook hook, uint8 a, uint8 b) private view returns (PoolKey memory) {

@@ -9,18 +9,41 @@ const META: Record<string, { name: string; logo: string }> = {
   FRAX: { name: "Frax", logo: "/tokens/frax.png" },
 };
 
-export type Token = { index: number; symbol: string; name: string; logo: string; decimals: number; address: string };
+export type Token = {
+  index: number;
+  symbol: string;
+  /** The coin a mock stands in for (USDC for both "USDC" and the mainnet demo "oUSDC"). */
+  base: string;
+  name: string;
+  logo: string;
+  /** Mainnet demo coins carry an "o" prefix so they never share a real stablecoin's symbol. */
+  demo: boolean;
+  decimals: number;
+  address: string;
+};
+
+const DEMO_PREFIX = "o";
+
+const baseOf = (symbol: string) =>
+  symbol.startsWith(DEMO_PREFIX) && META[symbol.slice(DEMO_PREFIX.length)] ? symbol.slice(DEMO_PREFIX.length) : symbol;
 
 /** The pool's basket in its onchain (sorted-address) order, which differs per network. */
 export function tokensFor(deployment: Deployment): Token[] {
-  return deployment.symbols.map((symbol, index) => ({
-    index,
-    symbol,
-    name: META[symbol]?.name ?? symbol,
-    logo: META[symbol]?.logo ?? "",
-    decimals: deployment.decimals[index],
-    address: deployment.currencies[index],
-  }));
+  return deployment.symbols.map((symbol, index) => {
+    const base = baseOf(symbol);
+    const demo = base !== symbol;
+    const name = META[base]?.name ?? symbol;
+    return {
+      index,
+      symbol,
+      base,
+      name: demo ? `Orbital demo ${name}` : name,
+      logo: META[base]?.logo ?? "",
+      demo,
+      decimals: deployment.decimals[index],
+      address: deployment.currencies[index],
+    };
+  });
 }
 
 /** Sum of amounts in 18-decimal dollars at $1 per coin (the convention for the mock basket). */

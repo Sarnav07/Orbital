@@ -10,19 +10,29 @@ import {OrbitalDeployBase, OrbitalDeployment} from "./OrbitalDeployBase.sol";
 
 /// @notice End-to-end demo deployment: mock basket, hook, six pools, seeded ranges, router.
 /// @dev Env: PRIVATE_KEY (required); POOL_MANAGER (optional: zero or unset deploys a
-///      fresh local PoolManager); DEPLOYMENT_OUT (optional JSON path under ./deployments).
-///      Mock tokens have a public `mint`, so they double as a testnet faucet.
+///      fresh local PoolManager); DEPLOYMENT_OUT (optional JSON path under ./deployments);
+///      DEMO_PREFIX (optional symbol prefix, e.g. "o" on a mainnet so mocks never reuse a
+///      real stablecoin's symbol). Mock tokens have a public `mint`, so they double as a faucet.
 contract DeployOrbitalDemo is OrbitalDeployBase {
     uint256 internal constant DEMO_FLOAT = 1_000_000;
 
     function run() external returns (OrbitalDeployment memory deployment) {
-        deployment = deploy(vm.envUint("PRIVATE_KEY"), vm.envOr("POOL_MANAGER", address(0)));
+        deployment = deploy(
+            vm.envUint("PRIVATE_KEY"), vm.envOr("POOL_MANAGER", address(0)), vm.envOr("DEMO_PREFIX", string(""))
+        );
         string memory out = vm.envOr("DEPLOYMENT_OUT", string(""));
         if (bytes(out).length != 0) _writeDeployment(deployment, out);
     }
 
     /// @notice Parameterized entry point, also used by tests to avoid process-global env.
     function deploy(uint256 privateKey, address managerAddress) public returns (OrbitalDeployment memory deployment) {
+        return deploy(privateKey, managerAddress, "");
+    }
+
+    function deploy(uint256 privateKey, address managerAddress, string memory symbolPrefix)
+        public
+        returns (OrbitalDeployment memory deployment)
+    {
         address deployer = vm.addr(privateKey);
         vm.startBroadcast(privateKey);
         deployment.manager = managerAddress == address(0)
@@ -33,7 +43,13 @@ contract DeployOrbitalDemo is OrbitalDeployBase {
         uint8[4] memory tokenDecimals = [uint8(6), 6, 18, 18];
         address[4] memory tokens;
         for (uint256 i; i < 4; ++i) {
-            tokens[i] = address(new MockERC20(string.concat("Orbital Mock ", symbols[i]), symbols[i], tokenDecimals[i]));
+            tokens[i] = address(
+                new MockERC20(
+                    string.concat("Orbital Mock ", symbols[i]),
+                    string.concat(symbolPrefix, symbols[i]),
+                    tokenDecimals[i]
+                )
+            );
         }
         uint8[4] memory decimals;
         (deployment.currencies, decimals) = _canonical(tokens);

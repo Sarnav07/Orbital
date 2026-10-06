@@ -21,7 +21,7 @@ function TokenLogo({ token, size = 24 }: { token: Token; size?: number }) {
 
 export function SwapPage() {
   const { tokens, network, explorerAddress, explorerTx, book, bookError, account, accountState, wallet, onChain, busy, setDrawer, switchNetwork, run } = useUni();
-  const [sell, setSell] = useState<number>(tokens.find((token) => token.symbol === "USDC")?.index ?? 0);
+  const [sell, setSell] = useState<number>(tokens.find((token) => token.base === "USDC")?.index ?? 0);
   const [buy, setBuy] = useState<number | null>(null);
   const [amountText, setAmountText] = useState("");
   const [selecting, setSelecting] = useState<"sell" | "buy" | null>(null);
